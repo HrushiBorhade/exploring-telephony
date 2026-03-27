@@ -4,3 +4,7 @@ dist/
 .env.local
 *.mp3
 *.wav
+web/node_modules/
+web/.next/
+recordings/
+drizzle/
