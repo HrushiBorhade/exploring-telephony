@@ -49,6 +49,12 @@ const VoiceResponse = twilio.twiml.VoiceResponse;
 // Derive WSS URL from BASE_URL (ngrok forwards wss→ws automatically)
 const WS_URL = BASE_URL!.replace(/^https?/, "wss");
 
+// Catch unhandled promise rejections from fire-and-forget DB writes
+// Without this, a DB error in a WebSocket handler would crash the process
+process.on("unhandledRejection", (reason: any) => {
+  console.error("[UNHANDLED] Promise rejection:", reason?.message ?? reason);
+});
+
 // ════════════════════════════════════════════════════════════════════
 // In-memory session store
 // ════════════════════════════════════════════════════════════════════
@@ -459,6 +465,7 @@ app.post("/api/sessions/:id/start", async (req, res) => {
     });
   } catch (err: any) {
     session.status = "created";
+    session.startedAt = undefined;
     console.error("[CALL] Error:", err.message);
     res.status(500).json({ error: err.message });
   }
@@ -801,6 +808,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
     res.json({ callSidA: callA.sid, callSidB: callB.sid });
   } catch (err: any) {
     capture.status = "created";
+    capture.startedAt = undefined;
     res.status(500).json({ error: err.message });
   }
 });
@@ -872,6 +880,9 @@ app.all("/twiml/capture-a/:captureId", (req, res) => {
   const capture = captures.get(captureId);
   const twiml = new VoiceResponse();
 
+  // Say BEFORE stream starts so TTS doesn't pollute ASR transcript
+  twiml.say({ voice: "Polly.Amy" }, "This call is being recorded for quality and training purposes.");
+
   const start = twiml.start();
   const stream = start.stream({
     url: `${WS_URL}/media-stream`,
@@ -881,8 +892,6 @@ app.all("/twiml/capture-a/:captureId", (req, res) => {
   stream.parameter({ name: "speaker", value: "caller_a" });
   stream.parameter({ name: "mode", value: "capture" });
   stream.parameter({ name: "language", value: capture?.language ?? "en" });
-
-  twiml.say({ voice: "Polly.Amy" }, "This call is being recorded for quality and training purposes.");
 
   const dial = twiml.dial();
   dial.conference({
@@ -906,6 +915,8 @@ app.all("/twiml/capture-b/:captureId", (req, res) => {
   const capture = captures.get(captureId);
   const twiml = new VoiceResponse();
 
+  twiml.say({ voice: "Polly.Amy" }, "This call is being recorded for quality and training purposes.");
+
   const start = twiml.start();
   const stream = start.stream({
     url: `${WS_URL}/media-stream`,
@@ -916,12 +927,10 @@ app.all("/twiml/capture-b/:captureId", (req, res) => {
   stream.parameter({ name: "mode", value: "capture" });
   stream.parameter({ name: "language", value: capture?.language ?? "en" });
 
-  twiml.say({ voice: "Polly.Amy" }, "This call is being recorded for quality and training purposes.");
-
   const dial = twiml.dial();
   dial.conference({
     startConferenceOnEnter: true,
-    endConferenceOnExit: false,
+    endConferenceOnExit: true,
     participantLabel: "caller_b",
     beep: "false",
     statusCallback: `${BASE_URL}/webhooks/capture-conference/${captureId}`,
@@ -1115,6 +1124,7 @@ mediaWss.on("connection", (ws) => {
       case "stop":
         console.log(`[MEDIA] Stream stopped: ${speaker}@${sessionId}`);
         dgHandle?.close();
+        dgHandle = null;
 
         // Write buffered audio to local WAV file
         if (mode === "capture" && audioChunks.length > 0) {

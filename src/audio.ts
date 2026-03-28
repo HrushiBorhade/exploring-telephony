@@ -17,21 +17,23 @@ export function writeMulawWav(filename: string, chunks: Buffer[]): string {
   const audioData = Buffer.concat(chunks);
   const dataSize = audioData.length;
 
-  // WAV header for mulaw encoding
-  const header = Buffer.alloc(44);
+  // WAV header for mulaw encoding (non-PCM requires cbSize extension field)
+  const headerSize = 46; // 44 + 2 bytes for cbSize
+  const header = Buffer.alloc(headerSize);
   header.write("RIFF", 0);                        // ChunkID
-  header.writeUInt32LE(36 + dataSize, 4);          // ChunkSize
+  header.writeUInt32LE(headerSize - 8 + dataSize, 4); // ChunkSize
   header.write("WAVE", 8);                         // Format
   header.write("fmt ", 12);                        // Subchunk1ID
-  header.writeUInt32LE(16, 16);                    // Subchunk1Size
+  header.writeUInt32LE(18, 16);                    // Subchunk1Size (18 for non-PCM: 16 + cbSize)
   header.writeUInt16LE(7, 20);                     // AudioFormat (7 = mulaw)
   header.writeUInt16LE(1, 22);                     // NumChannels (mono)
   header.writeUInt32LE(8000, 24);                  // SampleRate
-  header.writeUInt32LE(8000, 28);                  // ByteRate (SampleRate * NumChannels * BitsPerSample/8)
+  header.writeUInt32LE(8000, 28);                  // ByteRate
   header.writeUInt16LE(1, 32);                     // BlockAlign
   header.writeUInt16LE(8, 34);                     // BitsPerSample
-  header.write("data", 36);                        // Subchunk2ID
-  header.writeUInt32LE(dataSize, 40);              // Subchunk2Size
+  header.writeUInt16LE(0, 36);                     // cbSize (no extension data)
+  header.write("data", 38);                        // Subchunk2ID
+  header.writeUInt32LE(dataSize, 42);              // Subchunk2Size
 
   fs.writeFileSync(filePath, Buffer.concat([header, audioData]));
   console.log(`[AUDIO] Saved ${filename} (${(dataSize / 1024).toFixed(1)}KB, ${(dataSize / 8000).toFixed(1)}s)`);
