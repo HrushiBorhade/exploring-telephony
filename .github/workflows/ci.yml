@@ -17,8 +17,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npx tsc
+      - run: cd apps/api && npx tsc --noEmit
+      - run: cd apps/api && npx tsc
 
   frontend:
     name: Frontend — Typecheck & Build
@@ -29,10 +29,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: cd web && npm ci
-      - run: cd web && npx tsc --noEmit
-      - run: cd web && npx next build
+      - run: npm ci
+      - run: cd apps/web && npm ci
+      - run: cd apps/web && npx tsc --noEmit
+      - run: cd apps/web && npx next build
 
   docker:
     name: Docker Build

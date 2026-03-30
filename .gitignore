@@ -1,11 +1,11 @@
 node_modules/
 dist/
+.next/
 .env
 .env.local
 *.mp3
 *.wav
-web/node_modules/
-web/.next/
 recordings/
 drizzle/
 .playwright-mcp/
+.turbo/

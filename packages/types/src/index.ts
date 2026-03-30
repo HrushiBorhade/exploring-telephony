@@ -7,13 +7,13 @@ export interface Capture {
   status: "created" | "calling" | "active" | "ended" | "completed";
   roomName?: string;
   egressId?: string;
-  recordingUrl?: string;      // mixed (both callers)
-  recordingUrlA?: string;     // caller A only
-  recordingUrlB?: string;     // caller B only
+  recordingUrl?: string;
+  recordingUrlA?: string;
+  recordingUrlB?: string;
   localRecordingPath?: string;
   durationSeconds?: number;
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
-  _joinedCallers?: Set<string>; // runtime only — tracks which SIP callers are in the room
+  _joinedCallers?: Set<string>;
 }

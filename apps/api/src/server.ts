@@ -10,9 +10,9 @@ import {
   WebhookReceiver,
 } from "livekit-server-sdk";
 import { roomService, sipClient, egressClient } from "./livekit";
-import * as dbq from "./db/queries";
+import * as dbq from "@repo/db";
 import { downloadRecording, getRecordingPath, recordingExists } from "./audio";
-import type { Capture } from "./types";
+import type { Capture } from "@repo/types";
 
 // ════════════════════════════════════════════════════════════════════
 // Config
