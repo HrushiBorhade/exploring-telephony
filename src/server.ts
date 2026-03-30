@@ -111,10 +111,14 @@ app.get("/api/captures", async (_req, res) => {
   res.json(rows);
 });
 
-// Get capture
+// Get capture — always read from DB for completed/ended captures (has recording URLs)
+// Use in-memory cache only for active calls (faster status updates)
 app.get("/api/captures/:id", async (req, res) => {
   const cached = activeCaptures.get(req.params.id);
-  if (cached) { res.json(cached); return; }
+  if (cached && cached.status !== "completed" && cached.status !== "ended") {
+    res.json(cached);
+    return;
+  }
 
   const row = await dbq.getCapture(req.params.id);
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
