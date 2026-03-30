@@ -264,6 +264,36 @@ app.post("/livekit/webhook", async (req, res) => {
 
     console.log(`[WEBHOOK] ${event.event}`);
 
+    // When both participants leave, close the room + end capture
+    if (event.event === "participant_left" && event.room && event.participant) {
+      const roomName = event.room.name;
+      const remaining = event.room.numParticipants;
+      console.log(`[WEBHOOK] ${event.participant.identity} left ${roomName}. ${remaining} remaining.`);
+
+      // If room is empty (both callers hung up), clean up
+      if (remaining === 0) {
+        // Find capture by room name
+        const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
+        if (capture && capture.status === "active") {
+          capture.status = "ended";
+          capture.endedAt = new Date().toISOString();
+          capture.durationSeconds = capture.startedAt
+            ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
+            : 0;
+          dbq.updateCapture(capture.id, {
+            status: "ended",
+            endedAt: new Date(capture.endedAt),
+            durationSeconds: capture.durationSeconds,
+          });
+          console.log(`[WEBHOOK] Capture ${capture.id} ended (both callers hung up)`);
+
+          // Delete the room to trigger egress finalization
+          roomService.deleteRoom(roomName).catch(() => {});
+        }
+      }
+    }
+
+    // When egress finishes uploading to S3
     if (event.event === "egress_ended" && event.egressInfo) {
       const egressId = event.egressInfo.egressId;
       const fileResults = event.egressInfo.fileResults ?? [];
