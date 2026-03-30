@@ -2708,26 +2708,33 @@ async function startEvalSession(
 
   // Step 2: Dial Phone A into the room via SIP
   // Requires: Telnyx SIP outbound trunk configured in LiveKit
-  const participantA = await sipClient.createSipParticipant({
-    sipTrunkId: process.env.LIVEKIT_SIP_TRUNK_ID!,  // Telnyx trunk
-    sipCallTo: phoneA,
-    roomName: roomName,
-    participantIdentity: 'tester',
-    participantName: 'Human Tester',
-    participantAttributes: { role: 'tester' },
-  });
+  // API: createSipParticipant(trunkId, phoneNumber, roomName, options)
+  const participantA = await sipClient.createSipParticipant(
+    process.env.LIVEKIT_SIP_TRUNK_ID!,  // Telnyx outbound trunk
+    phoneA,                              // phone number to dial
+    roomName,                            // LiveKit room to join
+    {
+      participantIdentity: 'tester',
+      participantName: 'Human Tester',
+      krispEnabled: true,                // telephony noise cancellation
+      waitUntilAnswered: true,           // block until phone is picked up
+    },
+  );
 
   // Step 3: Dial Phone B into the same room
   await new Promise(r => setTimeout(r, 2000)); // stagger calls
 
-  const participantB = await sipClient.createSipParticipant({
-    sipTrunkId: process.env.LIVEKIT_SIP_TRUNK_ID!,
-    sipCallTo: phoneB,
-    roomName: roomName,
-    participantIdentity: 'voice-agent',
-    participantName: 'Voice AI Agent',
-    participantAttributes: { role: 'agent' },
-  });
+  const participantB = await sipClient.createSipParticipant(
+    process.env.LIVEKIT_SIP_TRUNK_ID!,
+    phoneB,
+    roomName,
+    {
+      participantIdentity: 'voice-agent',
+      participantName: 'Voice AI Agent',
+      krispEnabled: true,
+      waitUntilAnswered: true,
+    },
+  );
 
   // Step 4: Start recording (egress)
   const egressClient = new EgressClient(
