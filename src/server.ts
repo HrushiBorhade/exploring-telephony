@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import crypto from "crypto";
 import { logger } from "./logger";
+import { env } from "./env";
 import {
   EncodedFileOutput,
   EncodedFileType,
@@ -17,29 +18,9 @@ import type { Capture } from "./types";
 // Config
 // ════════════════════════════════════════════════════════════════════
 
-const {
-  LIVEKIT_SIP_TRUNK_ID,
-  LIVEKIT_API_KEY,
-  LIVEKIT_API_SECRET,
-  S3_ACCESS_KEY,
-  S3_SECRET_KEY,
-  S3_BUCKET,
-  S3_REGION,
-  S3_ENDPOINT,
-  PORT = "3001",
-} = process.env;
-
-const missing = [
-  !LIVEKIT_SIP_TRUNK_ID && "LIVEKIT_SIP_TRUNK_ID",
-  !S3_ACCESS_KEY && "S3_ACCESS_KEY",
-  !S3_SECRET_KEY && "S3_SECRET_KEY",
-  !S3_BUCKET && "S3_BUCKET",
-].filter(Boolean);
-
-if (missing.length) {
-  logger.fatal(`Missing env vars: ${missing.join(", ")}`);
-  process.exit(1);
-}
+// All env vars validated by src/env.ts at import time (zod schema)
+const { LIVEKIT_SIP_TRUNK_ID, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
+  S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET, S3_REGION, S3_ENDPOINT, PORT } = env;
 
 // Catch unhandled promise rejections
 process.on("unhandledRejection", (reason: any) => {
