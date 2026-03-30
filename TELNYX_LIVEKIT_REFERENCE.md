@@ -4,6 +4,170 @@ This document is a deep-dive reference for building telephony platforms with Tel
 
 ---
 
+## Glossary — Every Term Explained From First Principles
+
+Before diving in, here's every technical term you'll encounter, explained like you're hearing it for the first time.
+
+### Telephony Fundamentals
+
+**PSTN (Public Switched Telephone Network)**
+The global network of phone lines, cell towers, and switches that connects every phone number in the world. When you call +91-XXXX from your phone, PSTN routes it. It's the "internet" but for phone calls — been around since the 1800s. Companies like Telnyx and Twilio connect YOUR software to the PSTN so you can make/receive calls programmatically.
+
+**SIP (Session Initiation Protocol)**
+The language that phone systems use to talk to each other over the internet. When a call is made, SIP handles:
+- "Hey, I want to call this number" → SIP INVITE message
+- "OK, ringing..." → SIP 180 Ringing
+- "They picked up!" → SIP 200 OK
+- "Call ended" → SIP BYE
+
+Think of SIP as HTTP but for phone calls. Just like a browser sends HTTP requests to web servers, phone systems send SIP messages to establish calls.
+
+**SIP Trunk**
+A virtual phone line that connects your software to the PSTN via SIP. Instead of plugging a physical phone line into a wall, you configure a "trunk" (a connection) between your server and a telecom provider (Telnyx). One trunk can handle multiple simultaneous calls.
+
+```
+Your Server ←──SIP Trunk──→ Telnyx ←──PSTN──→ Real Phone Numbers
+```
+
+**SIP INVITE**
+The specific SIP message that starts a phone call. When Telnyx calls someone on your behalf, it sends an INVITE to the carrier network. When someone calls your Telnyx number, Telnyx receives an INVITE and forwards it to your server (or LiveKit's SIP bridge).
+
+**SIP Bridge**
+A piece of software that translates between SIP (phone world) and another protocol (like WebRTC). LiveKit's SIP bridge takes phone calls and brings them into LiveKit rooms where they become regular audio participants.
+
+```
+Phone Call (SIP) → LiveKit SIP Bridge → LiveKit Room (WebRTC)
+```
+
+**DTMF (Dual-Tone Multi-Frequency)**
+The tones you hear when you press buttons on your phone keypad. Each button produces two frequencies mixed together:
+- Pressing "1" = 697 Hz + 1209 Hz
+- Pressing "5" = 770 Hz + 1336 Hz
+
+When an IVR says "Press 1 for English," it's listening for DTMF tones. In our code, Telnyx/Twilio detects these and sends them as events.
+
+**IVR (Interactive Voice Response)**
+The automated phone menu system. "Press 1 for sales, Press 2 for support..." That's an IVR. It's built by combining speech (`<Say>`) with DTMF detection (`<Gather>`).
+
+### Audio Fundamentals
+
+**Codec (Coder-Decoder)**
+A codec compresses audio for transmission and decompresses it on the other end. Different codecs trade off between quality, bandwidth, and latency:
+- **mulaw (G.711u)**: The standard telephone codec since 1972. 8kHz sample rate, 64kbps. "Phone quality" — good enough to understand speech, not great for music.
+- **PCM (L16)**: Raw uncompressed audio. Perfect quality but uses more bandwidth. Best for ASR because there are no compression artifacts.
+- **G.722**: "HD Voice" — 16kHz in the same 64kbps as mulaw. Sounds noticeably better. Many modern phones support it.
+- **Opus**: Adaptive codec used in WebRTC. Can go from 6kbps to 510kbps. Adjusts quality based on network conditions.
+
+**Sample Rate**
+How many times per second audio is measured. Higher = better quality:
+- 8,000 Hz (8kHz) = telephone quality. Can reproduce sounds up to 4kHz. Speech is intelligible but "tinny."
+- 16,000 Hz (16kHz) = wideband / HD voice. Can reproduce sounds up to 8kHz. Noticeably clearer.
+- 44,100 Hz (44.1kHz) = CD quality.
+- 48,000 Hz (48kHz) = professional audio.
+
+For ASR, **16kHz is the sweet spot** — much better accuracy than 8kHz, without the bandwidth cost of 44.1kHz.
+
+**mulaw (μ-law)**
+A specific audio encoding algorithm used in North American and Japanese telephone networks. It compresses 16-bit audio samples to 8-bit using a logarithmic curve — quiet sounds get more bits (better resolution) while loud sounds get fewer. This matches how human hearing works.
+
+In our code, Twilio/Telnyx sends audio as mulaw-encoded, base64-wrapped chunks over WebSocket. We decode the base64, get raw mulaw bytes, and send them to Deepgram.
+
+**Base64**
+A way to encode binary data (like audio bytes) as text characters (A-Z, a-z, 0-9, +, /). WebSocket messages are often JSON text, so binary audio needs to be base64-encoded to travel inside JSON:
+```
+Raw audio bytes: [0xFF, 0x7F, 0x00, 0x3C, ...]
+Base64 encoded:  "/38APP..."
+```
+Our server decodes: `Buffer.from(payload, "base64")` → raw audio bytes → send to Deepgram.
+
+**Track**
+In telephony/media, a "track" is one stream of audio from one direction:
+- **Inbound track**: Audio coming FROM the caller (what they say into their phone)
+- **Outbound track**: Audio going TO the caller (what they hear)
+- **Both tracks**: Both directions mixed together
+
+When we set `track: "inbound_track"` on a media stream, we get ONLY what that specific caller is saying — perfect for per-speaker ASR.
+
+### AI Voice Pipeline Terms
+
+**ASR / STT (Automatic Speech Recognition / Speech-to-Text)**
+Converting spoken audio into written text. Deepgram, Google STT, Whisper are ASR engines. In our system, we pipe phone audio through ASR to get transcripts.
+
+**TTS (Text-to-Speech)**
+The opposite of ASR — converting written text into spoken audio. ElevenLabs, Cartesia, Google TTS are TTS engines. Used when building voice AI agents that need to "speak" to callers.
+
+**Barge-in / Interruption Handling**
+When a human interrupts an AI agent while it's speaking. Good voice agents detect this and stop talking immediately. Bad ones keep talking over the human. This is one of the hardest problems in voice AI.
+
+**Endpointing**
+Detecting when someone has FINISHED speaking. Deepgram's `endpointing: 300` means "if there's 300ms of silence, consider the current utterance done." Too low = words get cut off. Too high = awkward pauses before the agent responds.
+
+**Utterance**
+One continuous chunk of speech from one speaker. "Hello, I want to know about home loans" is one utterance. A pause (silence) separates utterances. Each utterance becomes one transcript entry.
+
+**Interim vs Final Results**
+ASR engines send results as they hear audio:
+- **Interim**: "I want to kn..." → "I want to know ab..." → "I want to know about ho..." (updates every ~200ms, may change)
+- **Final**: "I want to know about home loans." (Deepgram is confident, won't change)
+
+We display interim results for real-time feel but only STORE final results in the database.
+
+**Word-Level Timestamps**
+Deepgram returns the exact start/end time (in seconds) for every word:
+```json
+{ "word": "hello", "start": 0.10, "end": 0.45, "confidence": 0.99 }
+{ "word": "I",     "start": 0.50, "end": 0.60, "confidence": 0.98 }
+```
+This lets you click on any word and seek the audio to that exact moment.
+
+**Confidence Score**
+A number from 0 to 1 indicating how sure the ASR engine is about a word. 0.99 = very confident. 0.5 = guessing. We flag words below 0.8 with yellow underlines in the UI so humans can verify them.
+
+### LiveKit-Specific Terms
+
+**Room**
+LiveKit's fundamental container. A virtual space where participants meet. Like a Zoom meeting room but programmatic. Each room has a name, and participants join by room name.
+
+**Participant**
+Anyone or anything in a LiveKit room:
+- **STANDARD**: A human joining via browser/mobile (WebRTC)
+- **SIP**: A phone caller bridged in via the SIP bridge
+- **AGENT**: An AI agent running server-side
+- **EGRESS**: A recording/streaming service
+
+**Egress**
+The process of getting media OUT of a LiveKit room. "Egress" literally means "exit." Types:
+- **Room Composite Egress**: Record the entire room (all participants mixed) to a file
+- **Track Egress**: Export a single participant's audio/video track to a WebSocket or file
+- **Web Egress**: Render a web page that shows the room, record that
+
+In our system, we use egress to record calls and to stream audio to our ASR service.
+
+**Ingress**
+The opposite of egress — getting media INTO a LiveKit room from an external source. Example: streaming a pre-recorded audio file into a room, or bringing in an RTMP stream.
+
+**Agent Dispatch**
+Telling LiveKit to start an AI agent in a specific room. A "dispatch rule" maps conditions (like "a SIP participant joined") to agents (like "start the evaluation agent"). When the condition is met, LiveKit automatically spins up the agent.
+
+**WebRTC (Web Real-Time Communication)**
+A browser technology for real-time audio/video without plugins. LiveKit is built on WebRTC. When someone joins a LiveKit room from a browser, they use WebRTC. Phone callers use SIP instead, but the SIP bridge translates between them.
+
+**Krisp**
+AI-powered noise cancellation specifically for telephony. When you enable `krispEnabled: true` on a SIP participant, LiveKit removes background noise (traffic, keyboard, TV) from the phone audio before sending it to other participants or your ASR engine. Improves transcription accuracy significantly.
+
+### Data & Storage Terms
+
+**WAV**
+A file format for storing raw audio. Contains a header (describing the format) followed by raw audio bytes. We write mulaw WAV files from the audio chunks we receive via WebSocket.
+
+**Dual-Channel Recording**
+One audio file with two separate tracks inside (like stereo). Channel 1 = Caller A, Channel 2 = Caller B. Useful because you can isolate each speaker without AI-based speaker diarization.
+
+**Speaker Diarization**
+AI technique that figures out "who spoke when" from a mixed audio file. Unnecessary in our system because we already have separate audio streams per speaker.
+
+---
+
 ## Table of Contents
 
 1. [TELNYX](#telnyx)
