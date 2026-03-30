@@ -1,14 +1,22 @@
 import fs from "fs";
 import path from "path";
 
-const RECORDINGS_DIR = path.join(process.cwd(), "recordings");
+const RECORDINGS_DIR = path.resolve(__dirname, "..", "recordings");
 
 if (!fs.existsSync(RECORDINGS_DIR)) {
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
 }
 
+function safePath(filename: string): string {
+  const resolved = path.resolve(RECORDINGS_DIR, path.basename(filename));
+  if (!resolved.startsWith(RECORDINGS_DIR)) {
+    throw new Error("Invalid filename");
+  }
+  return resolved;
+}
+
 export async function downloadRecording(url: string, filename: string): Promise<string> {
-  const filePath = path.join(RECORDINGS_DIR, filename);
+  const filePath = safePath(filename);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Download failed: ${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
@@ -18,9 +26,13 @@ export async function downloadRecording(url: string, filename: string): Promise<
 }
 
 export function getRecordingPath(filename: string): string {
-  return path.join(RECORDINGS_DIR, filename);
+  return safePath(filename);
 }
 
 export function recordingExists(filename: string): boolean {
-  return fs.existsSync(path.join(RECORDINGS_DIR, filename));
+  try {
+    return fs.existsSync(safePath(filename));
+  } catch {
+    return false;
+  }
 }

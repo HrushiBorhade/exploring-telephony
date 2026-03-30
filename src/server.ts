@@ -104,8 +104,13 @@ app.use(express.urlencoded({ extended: true }));
 
 // List captures
 app.get("/api/captures", async (_req, res) => {
-  const rows = await dbq.listCaptures();
-  res.json(rows);
+  try {
+    const rows = await dbq.listCaptures();
+    res.json(rows);
+  } catch (err: any) {
+    console.error("[API] List captures failed:", err.message);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // Get capture — always read from DB for completed/ended captures (has recording URLs)
@@ -276,7 +281,10 @@ app.post("/livekit/webhook", async (req, res) => {
           console.log(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
 
           // Both callers joined — start all recordings NOW (no ringing silence)
+          // Guard: set egressId to PENDING synchronously to prevent race condition
+          // (two webhooks can fire nearly simultaneously)
           if (joined.size >= 2 && !capture.egressId) {
+            capture.egressId = "PENDING";
             try {
               // Mixed recording (both callers combined)
               const mixedOutput = createS3FileOutput(capture.id);
@@ -318,6 +326,7 @@ app.post("/livekit/webhook", async (req, res) => {
                 }
               }
             } catch (err: any) {
+              capture.egressId = undefined; // reset so retry is possible
               console.error(`[WEBHOOK] Failed to start egress:`, err.message);
             }
           }
@@ -442,9 +451,11 @@ app.post("/livekit/webhook", async (req, res) => {
         // Check DB — if we have at least one recording URL, mark completed
         const currentRow = await dbq.getCapture(row.id);
         if (currentRow && currentRow.status !== "completed") {
-          const hasAnyRecording = fileUrl || currentRow.recordingUrl || currentRow.recordingUrlA || currentRow.recordingUrlB;
+          const hasAnyRecording = currentRow.recordingUrl || currentRow.recordingUrlA || currentRow.recordingUrlB;
           if (hasAnyRecording) {
             await dbq.updateCapture(row.id, { status: "completed" });
+            // Clean up in-memory cache after a delay (let any in-flight webhooks finish)
+            setTimeout(() => activeCaptures.delete(row.id), 10000);
             console.log(`[WEBHOOK] Capture ${row.id} completed`);
           }
         }
