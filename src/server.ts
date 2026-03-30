@@ -282,61 +282,92 @@ app.post("/livekit/webhook", async (req, res) => {
 
     console.log(`[WEBHOOK] ${event.event}`);
 
-    // When second SIP participant joins → start mixed recording
+    // ── Track which SIP callers are in each room ──────────────────────
+    // LiveKit's numParticipants in webhooks is unreliable (excludes joining/leaving participant)
+    // So we track SIP participants ourselves
+
     if (event.event === "participant_joined" && event.room && event.participant) {
       const roomName = event.room.name;
-      const numParticipants = event.room.numParticipants;
       const identity = event.participant.identity;
-      console.log(`[WEBHOOK] ${identity} joined ${roomName}. ${numParticipants} in room.`);
 
-      // Start mixed egress when both callers are in (numParticipants >= 2)
-      // Only start if we haven't started it yet (no egressId)
-      if (numParticipants >= 2) {
+      // Only track our SIP callers, not egress bots
+      if (identity === "caller_a" || identity === "caller_b") {
         const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
-        if (capture && !capture.egressId) {
-          try {
-            const fileOutput = createS3FileOutput(capture.id);
-            const egressInfo = await egressClient.startRoomCompositeEgress(
-              roomName,
-              { file: fileOutput },
-              { audioOnly: true },
-            );
-            capture.egressId = egressInfo.egressId;
-            dbq.updateCapture(capture.id, { egressId: capture.egressId });
-            console.log(`[WEBHOOK] Mixed egress started: ${egressInfo.egressId} (both callers in room)`);
-          } catch (err: any) {
-            console.error(`[WEBHOOK] Failed to start mixed egress:`, err.message);
+        if (capture) {
+          if (!capture._joinedCallers) capture._joinedCallers = new Set();
+          capture._joinedCallers.add(identity);
+          const joined = capture._joinedCallers;
+          console.log(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
+
+          // Start mixed egress when BOTH callers are in
+          if (joined.size >= 2 && !capture.egressId) {
+            try {
+              const fileOutput = createS3FileOutput(capture.id);
+              const egressInfo = await egressClient.startRoomCompositeEgress(
+                roomName,
+                { file: fileOutput },
+                { audioOnly: true },
+              );
+              capture.egressId = egressInfo.egressId;
+              dbq.updateCapture(capture.id, { egressId: capture.egressId });
+              console.log(`[WEBHOOK] Mixed egress started: ${egressInfo.egressId} (both callers in room)`);
+            } catch (err: any) {
+              console.error(`[WEBHOOK] Failed to start mixed egress:`, err.message);
+            }
           }
         }
       }
     }
 
-    // When both participants leave, close the room + end capture
+    // When a SIP caller leaves
     if (event.event === "participant_left" && event.room && event.participant) {
       const roomName = event.room.name;
-      const remaining = event.room.numParticipants;
-      console.log(`[WEBHOOK] ${event.participant.identity} left ${roomName}. ${remaining} remaining.`);
+      const identity = event.participant.identity;
 
-      // If room is empty (both callers hung up), clean up
-      if (remaining === 0) {
-        // Find capture by room name
+      if (identity === "caller_a" || identity === "caller_b") {
         const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
-        if (capture && capture.status === "active") {
-          capture.status = "ended";
-          capture.endedAt = new Date().toISOString();
-          capture.durationSeconds = capture.startedAt
-            ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
-            : 0;
-          dbq.updateCapture(capture.id, {
-            status: "ended",
-            endedAt: new Date(capture.endedAt),
-            durationSeconds: capture.durationSeconds,
-          });
-          console.log(`[WEBHOOK] Capture ${capture.id} ended (both callers hung up)`);
+        if (capture) {
+          capture._joinedCallers?.delete(identity);
+          const remaining = capture._joinedCallers?.size ?? 0;
+          console.log(`[WEBHOOK] ${identity} left ${roomName}. Callers remaining: ${remaining}`);
 
-          // Delete the room to trigger egress finalization
-          roomService.deleteRoom(roomName).catch(() => {});
+          // Only end when ALL SIP callers have left (not when one hangs up)
+          if (remaining === 0 && capture.status === "active") {
+            capture.status = "ended";
+            capture.endedAt = new Date().toISOString();
+            capture.durationSeconds = capture.startedAt
+              ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
+              : 0;
+            dbq.updateCapture(capture.id, {
+              status: "ended",
+              endedAt: new Date(capture.endedAt),
+              durationSeconds: capture.durationSeconds,
+            });
+            console.log(`[WEBHOOK] Capture ${capture.id} ended (all callers left)`);
+
+            // Delete the room to trigger egress finalization
+            roomService.deleteRoom(roomName).catch(() => {});
+          }
         }
+      }
+    }
+
+    // Use room_finished as a fallback to mark capture as ended
+    if (event.event === "room_finished" && event.room) {
+      const roomName = event.room.name;
+      const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
+      if (capture && capture.status === "active") {
+        capture.status = "ended";
+        capture.endedAt = new Date().toISOString();
+        capture.durationSeconds = capture.startedAt
+          ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
+          : 0;
+        dbq.updateCapture(capture.id, {
+          status: "ended",
+          endedAt: new Date(capture.endedAt),
+          durationSeconds: capture.durationSeconds,
+        });
+        console.log(`[WEBHOOK] Capture ${capture.id} ended (room finished)`);
       }
     }
 
@@ -394,15 +425,22 @@ app.post("/livekit/webhook", async (req, res) => {
           console.log(`[WEBHOOK] Recording saved for ${row.id}`);
         }
 
-        // Mark as completed when the mixed recording is ready
-        if (isMixed) {
-          await dbq.updateCapture(row.id, { status: "completed" });
-          const cached = activeCaptures.get(row.id);
-          if (cached) {
-            cached.status = "completed";
-            cached.recordingUrl = fileUrl;
+        // Mark as completed when any recording is ready
+        // (mixed is preferred, but per-speaker tracks also count)
+        const cached = activeCaptures.get(row.id);
+        if (cached && cached.status !== "completed") {
+          cached.status = "completed";
+          if (isMixed) cached.recordingUrl = fileUrl;
+        }
+
+        // Check DB — if we have at least one recording URL, mark completed
+        const currentRow = await dbq.getCapture(row.id);
+        if (currentRow && currentRow.status !== "completed") {
+          const hasAnyRecording = fileUrl || currentRow.recordingUrl || currentRow.recordingUrlA || currentRow.recordingUrlB;
+          if (hasAnyRecording) {
+            await dbq.updateCapture(row.id, { status: "completed" });
+            console.log(`[WEBHOOK] Capture ${row.id} completed`);
           }
-          console.log(`[WEBHOOK] Capture ${row.id} completed`);
         }
       }
     }

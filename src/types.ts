@@ -15,4 +15,5 @@ export interface Capture {
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
+  _joinedCallers?: Set<string>; // runtime only — tracks which SIP callers are in the room
 }
