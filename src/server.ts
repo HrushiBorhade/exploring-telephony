@@ -318,38 +318,65 @@ app.post("/livekit/webhook", async (req, res) => {
       }
     }
 
-    // When egress finishes uploading to S3
+    // When any egress finishes uploading to S3
     if (event.event === "egress_ended" && event.egressInfo) {
       const egressId = event.egressInfo.egressId;
+      const roomName = event.egressInfo.roomName;
+
+      // Get file URL from results
       const fileResults = event.egressInfo.fileResults ?? [];
-      const fileUrl = fileResults[0]?.location || fileResults[0]?.filename;
+      const fileUrl = fileResults[0]?.location || fileResults[0]?.filename
+        || (event.egressInfo as any).trackResults?.[0]?.location
+        || (event.egressInfo as any).trackResults?.[0]?.filename;
 
-      console.log(`[WEBHOOK] Egress complete: ${egressId}, file: ${fileUrl}`);
+      console.log(`[WEBHOOK] Egress complete: ${egressId}, room: ${roomName}, file: ${fileUrl}`);
 
-      // Find capture by egressId
-      const row = await dbq.findCaptureByEgressId(egressId);
+      // Find capture — by egressId (room composite) or by roomName (track egress)
+      let row = await dbq.findCaptureByEgressId(egressId);
+      if (!row && roomName) {
+        // Track egresses don't have the egressId in our DB — find by room name
+        const captures = await dbq.listCaptures();
+        row = captures.find((c) => c.roomName === roomName) ?? undefined;
+      }
+
       if (row && fileUrl) {
-        // Download from S3 to local storage
-        const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch((err) => {
-          console.error("[WEBHOOK] Download failed:", err.message);
-          return null;
-        });
+        // Determine if this is the mixed recording or a per-speaker track
+        const filepath = fileUrl.toLowerCase();
+        const isMixed = filepath.includes("-mixed");
+        const isCallerA = filepath.includes("-caller_a");
+        const isCallerB = filepath.includes("-caller_b");
 
-        await dbq.updateCapture(row.id, {
-          status: "completed",
-          recordingUrl: fileUrl,
-          localRecordingPath: localPath,
-        });
-
-        // Update in-memory cache
-        const cached = activeCaptures.get(row.id);
-        if (cached) {
-          cached.status = "completed";
-          cached.recordingUrl = fileUrl;
-          cached.localRecordingPath = localPath ?? undefined;
+        if (isMixed) {
+          // Download mixed recording locally
+          const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch((err) => {
+            console.error("[WEBHOOK] Download failed:", err.message);
+            return null;
+          });
+          await dbq.updateCapture(row.id, { recordingUrl: fileUrl, localRecordingPath: localPath });
+          console.log(`[WEBHOOK] Mixed recording saved for ${row.id}`);
+        } else if (isCallerA) {
+          await dbq.updateCapture(row.id, { recordingUrlA: fileUrl });
+          console.log(`[WEBHOOK] Caller A recording saved for ${row.id}`);
+        } else if (isCallerB) {
+          await dbq.updateCapture(row.id, { recordingUrlB: fileUrl });
+          console.log(`[WEBHOOK] Caller B recording saved for ${row.id}`);
+        } else {
+          // Unknown track — save as mixed
+          const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch(() => null);
+          await dbq.updateCapture(row.id, { recordingUrl: fileUrl, localRecordingPath: localPath });
+          console.log(`[WEBHOOK] Recording saved for ${row.id}`);
         }
 
-        console.log(`[WEBHOOK] Capture ${row.id} completed. Recording: ${fileUrl}`);
+        // Mark as completed when the mixed recording is ready
+        if (isMixed) {
+          await dbq.updateCapture(row.id, { status: "completed" });
+          const cached = activeCaptures.get(row.id);
+          if (cached) {
+            cached.status = "completed";
+            cached.recordingUrl = fileUrl;
+          }
+          console.log(`[WEBHOOK] Capture ${row.id} completed`);
+        }
       }
     }
   } catch (err: any) {

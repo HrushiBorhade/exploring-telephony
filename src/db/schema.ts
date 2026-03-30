@@ -15,7 +15,9 @@ export const captures = pgTable("captures_v2", {
   status: varchar("status", { length: 20 }).notNull().default("created"),
   roomName: varchar("room_name", { length: 100 }),
   egressId: varchar("egress_id", { length: 50 }),
-  recordingUrl: text("recording_url"),
+  recordingUrl: text("recording_url"),             // mixed audio (both callers)
+  recordingUrlA: text("recording_url_a"),           // caller A only
+  recordingUrlB: text("recording_url_b"),           // caller B only
   localRecordingPath: text("local_recording_path"),
   durationSeconds: integer("duration_seconds"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

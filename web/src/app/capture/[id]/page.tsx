@@ -128,25 +128,37 @@ export default function CaptureDetailPage() {
                     <p className="text-xs text-muted-foreground">This usually takes 10-30 seconds.</p>
                   </div>
                 )}
-                {capture.status === "completed" && recordingFilename && (
-                  <div className="space-y-4">
-                    <p className="text-emerald-300 font-medium">Recording ready</p>
-                    <audio
-                      controls
-                      className="w-full"
-                      src={`${API}/api/recordings/${recordingFilename}`}
-                    />
-                    {capture.recordingUrl && (
-                      <p className="text-[10px] text-muted-foreground font-mono break-all">
-                        S3: {capture.recordingUrl}
-                      </p>
+                {capture.status === "completed" && (
+                  <div className="space-y-5">
+                    <p className="text-emerald-300 font-medium">Recordings ready</p>
+
+                    {/* Mixed (both callers) */}
+                    {(recordingFilename || capture.recordingUrl) && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">Mixed (both callers)</p>
+                        <audio
+                          controls
+                          className="w-full"
+                          src={recordingFilename ? `${API}/api/recordings/${recordingFilename}` : capture.recordingUrl}
+                        />
+                      </div>
                     )}
-                  </div>
-                )}
-                {capture.status === "completed" && !recordingFilename && capture.recordingUrl && (
-                  <div className="space-y-4">
-                    <p className="text-emerald-300 font-medium">Recording ready (S3)</p>
-                    <audio controls className="w-full" src={capture.recordingUrl} />
+
+                    {/* Caller A only */}
+                    {capture.recordingUrlA && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-blue-400">Phone A — {capture.phoneA}</p>
+                        <audio controls className="w-full" src={capture.recordingUrlA} />
+                      </div>
+                    )}
+
+                    {/* Caller B only */}
+                    {capture.recordingUrlB && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-orange-400">Phone B — {capture.phoneB}</p>
+                        <audio controls className="w-full" src={capture.recordingUrlB} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

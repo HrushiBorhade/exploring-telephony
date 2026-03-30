@@ -7,6 +7,8 @@ export interface Capture {
   status: "created" | "calling" | "active" | "ended" | "completed";
   roomName?: string;
   recordingUrl?: string;
+  recordingUrlA?: string;
+  recordingUrlB?: string;
   localRecordingPath?: string;
   durationSeconds?: number;
   createdAt: string;

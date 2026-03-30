@@ -7,7 +7,9 @@ export interface Capture {
   status: "created" | "calling" | "active" | "ended" | "completed";
   roomName?: string;
   egressId?: string;
-  recordingUrl?: string;
+  recordingUrl?: string;      // mixed (both callers)
+  recordingUrlA?: string;     // caller A only
+  recordingUrlB?: string;     // caller B only
   localRecordingPath?: string;
   durationSeconds?: number;
   createdAt: string;
