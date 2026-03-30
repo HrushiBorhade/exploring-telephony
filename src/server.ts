@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import crypto from "crypto";
+import { logger } from "./logger";
 import {
   EncodedFileOutput,
   EncodedFileType,
@@ -36,13 +37,13 @@ const missing = [
 ].filter(Boolean);
 
 if (missing.length) {
-  console.error(`Missing env vars: ${missing.join(", ")}`);
+  logger.fatal(`Missing env vars: ${missing.join(", ")}`);
   process.exit(1);
 }
 
 // Catch unhandled promise rejections
 process.on("unhandledRejection", (reason: any) => {
-  console.error("[UNHANDLED]", reason?.message ?? reason);
+  logger.error("[UNHANDLED]", reason?.message ?? reason);
 });
 
 // LiveKit webhook receiver for verifying webhook signatures
@@ -108,7 +109,7 @@ app.get("/api/captures", async (_req, res) => {
     const rows = await dbq.listCaptures();
     res.json(rows);
   } catch (err: any) {
-    console.error("[API] List captures failed:", err.message);
+    logger.error("[API] List captures failed:", err.message);
     res.status(500).json({ error: "Database error" });
   }
 });
@@ -159,7 +160,7 @@ app.post("/api/captures", async (req, res) => {
     roomName,
   });
 
-  console.log(`[CAPTURE] Created: ${id}`);
+  logger.info(`[CAPTURE] Created: ${id}`);
   res.json(capture);
 });
 
@@ -178,7 +179,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
   try {
     // 1. Create room (no egress yet — recording starts when both callers join via webhook)
     await roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 4 });
-    console.log(`[CAPTURE] Room created: ${capture.roomName}`);
+    logger.info(`[CAPTURE] Room created: ${capture.roomName}`);
 
     // 2. Dial Phone A
     await sipClient.createSipParticipant(
@@ -191,7 +192,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
         krispEnabled: true,
       },
     );
-    console.log(`[CAPTURE] Dialing Phone A: ${capture.phoneA}`);
+    logger.info(`[CAPTURE] Dialing Phone A: ${capture.phoneA}`);
 
     // 4. Stagger + Dial Phone B
     await new Promise((r) => setTimeout(r, 2000));
@@ -206,7 +207,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
         krispEnabled: true,
       },
     );
-    console.log(`[CAPTURE] Dialing Phone B: ${capture.phoneB}`);
+    logger.info(`[CAPTURE] Dialing Phone B: ${capture.phoneB}`);
 
     capture.status = "active";
     dbq.updateCapture(capture.id, {
@@ -219,7 +220,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
   } catch (err: any) {
     capture.status = "created";
     capture.startedAt = undefined;
-    console.error("[CAPTURE] Start failed:", err.message);
+    logger.error("[CAPTURE] Start failed:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -231,7 +232,7 @@ app.post("/api/captures/:id/end", async (req, res) => {
 
   try {
     await roomService.deleteRoom(capture.roomName!);
-    console.log(`[CAPTURE] Room deleted: ${capture.roomName}`);
+    logger.info(`[CAPTURE] Room deleted: ${capture.roomName}`);
 
     capture.status = "ended";
     capture.endedAt = new Date().toISOString();
@@ -248,7 +249,7 @@ app.post("/api/captures/:id/end", async (req, res) => {
     // Recording will arrive via webhook when LiveKit finishes uploading to S3
     res.json({ status: "ended", durationSeconds: capture.durationSeconds });
   } catch (err: any) {
-    console.error("[CAPTURE] End failed:", err.message);
+    logger.error("[CAPTURE] End failed:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -261,7 +262,7 @@ app.post("/livekit/webhook", async (req, res) => {
     const authHeader = req.get("Authorization") || "";
     const event = await webhookReceiver.receive(body, authHeader);
 
-    console.log(`[WEBHOOK] ${event.event}`);
+    logger.info(`[WEBHOOK] ${event.event}`);
 
     // ── Track which SIP callers are in each room ──────────────────────
     // LiveKit's numParticipants in webhooks is unreliable (excludes joining/leaving participant)
@@ -278,7 +279,7 @@ app.post("/livekit/webhook", async (req, res) => {
           if (!capture._joinedCallers) capture._joinedCallers = new Set();
           capture._joinedCallers.add(identity);
           const joined = capture._joinedCallers;
-          console.log(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
+          logger.info(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
 
           // Both callers joined — start all recordings NOW (no ringing silence)
           // Guard: set egressId to PENDING synchronously to prevent race condition
@@ -295,7 +296,7 @@ app.post("/livekit/webhook", async (req, res) => {
               );
               capture.egressId = mixedEgress.egressId;
               dbq.updateCapture(capture.id, { egressId: capture.egressId });
-              console.log(`[WEBHOOK] Mixed egress started: ${mixedEgress.egressId}`);
+              logger.info(`[WEBHOOK] Mixed egress started: ${mixedEgress.egressId}`);
 
               // Per-speaker recordings (caller_a and caller_b separately)
               for (const callerId of ["caller_a", "caller_b"]) {
@@ -320,14 +321,14 @@ app.post("/livekit/webhook", async (req, res) => {
                     callerId,
                     { file: speakerOutput },
                   );
-                  console.log(`[WEBHOOK] ${callerId} egress started`);
+                  logger.info(`[WEBHOOK] ${callerId} egress started`);
                 } catch (err: any) {
-                  console.error(`[WEBHOOK] ${callerId} egress failed:`, err.message);
+                  logger.error(`[WEBHOOK] ${callerId} egress failed:`, err.message);
                 }
               }
             } catch (err: any) {
               capture.egressId = undefined; // reset so retry is possible
-              console.error(`[WEBHOOK] Failed to start egress:`, err.message);
+              logger.error(`[WEBHOOK] Failed to start egress:`, err.message);
             }
           }
         }
@@ -344,7 +345,7 @@ app.post("/livekit/webhook", async (req, res) => {
         if (capture) {
           capture._joinedCallers?.delete(identity);
           const remaining = capture._joinedCallers?.size ?? 0;
-          console.log(`[WEBHOOK] ${identity} left ${roomName}. Callers remaining: ${remaining}`);
+          logger.info(`[WEBHOOK] ${identity} left ${roomName}. Callers remaining: ${remaining}`);
 
           // Only end when ALL SIP callers have left (not when one hangs up)
           if (remaining === 0 && capture.status === "active") {
@@ -358,7 +359,7 @@ app.post("/livekit/webhook", async (req, res) => {
               endedAt: new Date(capture.endedAt),
               durationSeconds: capture.durationSeconds,
             });
-            console.log(`[WEBHOOK] Capture ${capture.id} ended (all callers left)`);
+            logger.info(`[WEBHOOK] Capture ${capture.id} ended (all callers left)`);
 
             // Delete the room to trigger egress finalization
             roomService.deleteRoom(roomName).catch(() => {});
@@ -382,7 +383,7 @@ app.post("/livekit/webhook", async (req, res) => {
           endedAt: new Date(capture.endedAt),
           durationSeconds: capture.durationSeconds,
         });
-        console.log(`[WEBHOOK] Capture ${capture.id} ended (room finished)`);
+        logger.info(`[WEBHOOK] Capture ${capture.id} ended (room finished)`);
       }
     }
 
@@ -402,7 +403,7 @@ app.post("/livekit/webhook", async (req, res) => {
         ? `${S3_ENDPOINT}/${S3_BUCKET}/${rawPath}`
         : rawPath;
 
-      console.log(`[WEBHOOK] Egress complete: ${egressId}, room: ${roomName}, file: ${fileUrl}`);
+      logger.info(`[WEBHOOK] Egress complete: ${egressId}, room: ${roomName}, file: ${fileUrl}`);
 
       // Find capture — by egressId (room composite) or by roomName (track egress)
       let row = await dbq.findCaptureByEgressId(egressId);
@@ -422,22 +423,22 @@ app.post("/livekit/webhook", async (req, res) => {
         if (isMixed) {
           // Download mixed recording locally
           const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch((err) => {
-            console.error("[WEBHOOK] Download failed:", err.message);
+            logger.error("[WEBHOOK] Download failed:", err.message);
             return null;
           });
           await dbq.updateCapture(row.id, { recordingUrl: fileUrl, localRecordingPath: localPath });
-          console.log(`[WEBHOOK] Mixed recording saved for ${row.id}`);
+          logger.info(`[WEBHOOK] Mixed recording saved for ${row.id}`);
         } else if (isCallerA) {
           await dbq.updateCapture(row.id, { recordingUrlA: fileUrl });
-          console.log(`[WEBHOOK] Caller A recording saved for ${row.id}`);
+          logger.info(`[WEBHOOK] Caller A recording saved for ${row.id}`);
         } else if (isCallerB) {
           await dbq.updateCapture(row.id, { recordingUrlB: fileUrl });
-          console.log(`[WEBHOOK] Caller B recording saved for ${row.id}`);
+          logger.info(`[WEBHOOK] Caller B recording saved for ${row.id}`);
         } else {
           // Unknown track — save as mixed
           const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch(() => null);
           await dbq.updateCapture(row.id, { recordingUrl: fileUrl, localRecordingPath: localPath });
-          console.log(`[WEBHOOK] Recording saved for ${row.id}`);
+          logger.info(`[WEBHOOK] Recording saved for ${row.id}`);
         }
 
         // Mark as completed when any recording is ready
@@ -456,13 +457,13 @@ app.post("/livekit/webhook", async (req, res) => {
             await dbq.updateCapture(row.id, { status: "completed" });
             // Clean up in-memory cache after a delay (let any in-flight webhooks finish)
             setTimeout(() => activeCaptures.delete(row.id), 10000);
-            console.log(`[WEBHOOK] Capture ${row.id} completed`);
+            logger.info(`[WEBHOOK] Capture ${row.id} completed`);
           }
         }
       }
     }
   } catch (err: any) {
-    console.error("[WEBHOOK] Error:", err.message);
+    logger.error("[WEBHOOK] Error:", err.message);
   }
 
   res.sendStatus(200);
@@ -496,11 +497,11 @@ app.get("/api/r2/:captureId/:filename", async (req, res) => {
     { env },
     (err: any) => {
       if (err) {
-        console.error("[R2] Download failed:", err.message);
+        logger.error("[R2] Download failed:", err.message);
         res.status(404).json({ error: "Recording not found in R2" });
         return;
       }
-      console.log(`[R2] Downloaded ${req.params.filename}`);
+      logger.info(`[R2] Downloaded ${req.params.filename}`);
       res.setHeader("Content-Type", "audio/mpeg");
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.sendFile(localPath);
@@ -532,10 +533,5 @@ app.get("/health", (_req, res) => {
 // ════════════════════════════════════════════════════════════════════
 
 app.listen(Number(PORT), () => {
-  console.log(`
-  ╔════════════════════════════════════════════════╗
-  ║  Voice Capture Platform (LiveKit + Telnyx)     ║
-  ║  http://localhost:${PORT}                        ║
-  ╚════════════════════════════════════════════════╝
-  `);
+  logger.info({ port: PORT }, "Voice Capture Platform started");
 });
