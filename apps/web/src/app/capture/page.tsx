@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import type { Capture } from "@/lib/types";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "";
+import { useCaptures, useCreateCapture } from "@/lib/api";
 
 const statusColors: Record<string, string> = {
   created: "bg-zinc-700 text-zinc-300",
@@ -61,66 +59,26 @@ function DashboardSkeleton() {
 
 export default function CaptureDashboard() {
   const router = useRouter();
-  const [captures, setCaptures] = useState<Capture[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { data: captures = [], isLoading: initialLoading, error: loadError } = useCaptures();
+  const createMutation = useCreateCapture();
+
   const [open, setOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [phoneA, setPhoneA] = useState("");
   const [phoneB, setPhoneB] = useState("");
   const [language, setLanguage] = useState("en");
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`${API}/api/captures`);
-      if (res.ok) {
-        setCaptures(await res.json());
-        setLoadError(null);
-      } else {
-        const errText = await res.text().catch(() => "Unknown error");
-        setLoadError(`Server returned ${res.status}: ${errText}`);
-      }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Network error — is the API server running?");
-    } finally {
-      setInitialLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const i = setInterval(load, 5000);
-    return () => clearInterval(i);
-  }, [load]);
+  const creating = createMutation.isPending;
 
   async function create() {
-    setCreating(true);
-    try {
-      const res = await fetch(`${API}/api/captures`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, phoneA, phoneB, language }),
-      });
-      if (res.ok) {
-        const c = await res.json();
-        toast.success(`Capture ${c.id} created`);
-        setOpen(false);
-        // Reset form
-        setName("");
-        setPhoneA("");
-        setPhoneB("");
-        setLanguage("en");
-        router.push(`/capture/${c.id}`);
-      } else {
-        const body = await res.json().catch(() => ({ error: `Server error (${res.status})` }));
-        toast.error(body.error || "Failed to create capture");
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Network error — could not reach the API server");
-    } finally {
-      setCreating(false);
-    }
+    const result = await createMutation.mutateAsync({ name, phoneA, phoneB, language });
+    toast.success(`Capture ${result.id} created`);
+    setOpen(false);
+    setName("");
+    setPhoneA("");
+    setPhoneB("");
+    setLanguage("en");
+    router.push(`/capture/${result.id}`);
   }
 
   const formatDuration = (s?: number | null) => {
@@ -211,9 +169,9 @@ export default function CaptureDashboard() {
             </div>
             <div>
               <p className="font-medium">Failed to load captures</p>
-              <p className="text-sm text-muted-foreground mt-1">{loadError}</p>
+              <p className="text-sm text-muted-foreground mt-1">{loadError.message}</p>
             </div>
-            <Button variant="outline" onClick={load}>
+            <Button variant="outline" onClick={() => window.location.reload()}>
               Retry
             </Button>
           </CardContent>
