@@ -1,0 +1,14 @@
+node_modules
+web/node_modules
+web/.next
+dist
+recordings
+.env
+.env.local
+.git
+*.md
+docs
+drizzle
+TELNYX_LIVEKIT_REFERENCE.md
+PRODUCT_VISION.md
+TWILIO_RESEARCH.md
