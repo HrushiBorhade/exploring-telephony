@@ -68,7 +68,19 @@ export default function CaptureDetailPage() {
     return `${m}:${String(sec).padStart(2, "0")}`;
   };
 
-  const recordingFilename = capture.localRecordingPath ? `${capture.id}-mixed.ogg` : null;
+  // Build public R2 URLs for audio playback
+  const R2_PUBLIC = "https://pub-c4f497a2d9354081a36aee5f920fa419.r2.dev";
+  const toPublicUrl = (r2Url?: string | null) => {
+    if (!r2Url) return null;
+    // Extract just the filename (everything after the last /)
+    const filename = r2Url.split("/").pop();
+    if (!filename) return null;
+    return `${R2_PUBLIC}/recordings/${filename}`;
+  };
+
+  const mixedAudioUrl = toPublicUrl(capture.recordingUrl);
+  const callerAAudioUrl = toPublicUrl(capture.recordingUrlA);
+  const callerBAudioUrl = toPublicUrl(capture.recordingUrlB);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -133,30 +145,26 @@ export default function CaptureDetailPage() {
                     <p className="text-emerald-300 font-medium">Recordings ready</p>
 
                     {/* Mixed (both callers) */}
-                    {(recordingFilename || capture.recordingUrl) && (
+                    {mixedAudioUrl && (
                       <div className="space-y-1.5">
                         <p className="text-xs font-medium text-muted-foreground">Mixed (both callers)</p>
-                        <audio
-                          controls
-                          className="w-full"
-                          src={recordingFilename ? `${API}/api/recordings/${recordingFilename}` : capture.recordingUrl}
-                        />
+                        <audio controls className="w-full" src={mixedAudioUrl} />
                       </div>
                     )}
 
                     {/* Caller A only */}
-                    {capture.recordingUrlA && (
+                    {callerAAudioUrl && (
                       <div className="space-y-1.5">
                         <p className="text-xs font-medium text-blue-400">Phone A — {capture.phoneA}</p>
-                        <audio controls className="w-full" src={capture.recordingUrlA} />
+                        <audio controls className="w-full" src={callerAAudioUrl} />
                       </div>
                     )}
 
                     {/* Caller B only */}
-                    {capture.recordingUrlB && (
+                    {callerBAudioUrl && (
                       <div className="space-y-1.5">
                         <p className="text-xs font-medium text-orange-400">Phone B — {capture.phoneB}</p>
-                        <audio controls className="w-full" src={capture.recordingUrlB} />
+                        <audio controls className="w-full" src={callerBAudioUrl} />
                       </div>
                     )}
                   </div>

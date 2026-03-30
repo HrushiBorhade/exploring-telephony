@@ -63,8 +63,8 @@ const activeCaptures = new Map<string, Capture>();
 
 function createS3FileOutput(captureId: string): EncodedFileOutput {
   return new EncodedFileOutput({
-    fileType: EncodedFileType.OGG,
-    filepath: `recordings/${captureId}-mixed.ogg`,
+    fileType: EncodedFileType.MP4,
+    filepath: `recordings/${captureId}-mixed.mp4`,
     output: {
       case: "s3",
       value: new S3Upload({
@@ -196,17 +196,10 @@ app.post("/api/captures/:id/start", async (req, res) => {
     });
     console.log(`[CAPTURE] Room created with per-speaker auto-egress: ${capture.roomName}`);
 
-    // 2. Also start room composite egress for a mixed playback file
-    const fileOutput = createS3FileOutput(capture.id);
-    const egressInfo = await egressClient.startRoomCompositeEgress(
-      capture.roomName!,
-      { file: fileOutput },
-      { audioOnly: true },
-    );
-    capture.egressId = egressInfo.egressId;
-    console.log(`[CAPTURE] Mixed egress started: ${egressInfo.egressId}`);
+    // NOTE: Mixed recording egress starts in the webhook when BOTH callers join
+    // This avoids recording silence/ringing before the conversation starts
 
-    // 3. Dial Phone A
+    // 2. Dial Phone A
     await sipClient.createSipParticipant(
       LIVEKIT_SIP_TRUNK_ID!,
       capture.phoneA,
@@ -289,6 +282,35 @@ app.post("/livekit/webhook", async (req, res) => {
 
     console.log(`[WEBHOOK] ${event.event}`);
 
+    // When second SIP participant joins → start mixed recording
+    if (event.event === "participant_joined" && event.room && event.participant) {
+      const roomName = event.room.name;
+      const numParticipants = event.room.numParticipants;
+      const identity = event.participant.identity;
+      console.log(`[WEBHOOK] ${identity} joined ${roomName}. ${numParticipants} in room.`);
+
+      // Start mixed egress when both callers are in (numParticipants >= 2)
+      // Only start if we haven't started it yet (no egressId)
+      if (numParticipants >= 2) {
+        const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
+        if (capture && !capture.egressId) {
+          try {
+            const fileOutput = createS3FileOutput(capture.id);
+            const egressInfo = await egressClient.startRoomCompositeEgress(
+              roomName,
+              { file: fileOutput },
+              { audioOnly: true },
+            );
+            capture.egressId = egressInfo.egressId;
+            dbq.updateCapture(capture.id, { egressId: capture.egressId });
+            console.log(`[WEBHOOK] Mixed egress started: ${egressInfo.egressId} (both callers in room)`);
+          } catch (err: any) {
+            console.error(`[WEBHOOK] Failed to start mixed egress:`, err.message);
+          }
+        }
+      }
+    }
+
     // When both participants leave, close the room + end capture
     if (event.event === "participant_left" && event.room && event.participant) {
       const roomName = event.room.name;
@@ -323,11 +345,16 @@ app.post("/livekit/webhook", async (req, res) => {
       const egressId = event.egressInfo.egressId;
       const roomName = event.egressInfo.roomName;
 
-      // Get file URL from results
+      // Get file path from results — LiveKit returns relative S3 path, not full URL
       const fileResults = event.egressInfo.fileResults ?? [];
-      const fileUrl = fileResults[0]?.location || fileResults[0]?.filename
+      const rawPath = fileResults[0]?.location || fileResults[0]?.filename
         || (event.egressInfo as any).trackResults?.[0]?.location
         || (event.egressInfo as any).trackResults?.[0]?.filename;
+
+      // Build full R2 URL: https://ENDPOINT/BUCKET/path
+      const fileUrl = rawPath && !rawPath.startsWith("http")
+        ? `${S3_ENDPOINT}/${S3_BUCKET}/${rawPath}`
+        : rawPath;
 
       console.log(`[WEBHOOK] Egress complete: ${egressId}, room: ${roomName}, file: ${fileUrl}`);
 
@@ -386,6 +413,46 @@ app.post("/livekit/webhook", async (req, res) => {
   res.sendStatus(200);
 });
 
+// ── Proxy R2 recordings ──────────────────────────────────────────────
+
+app.get("/api/r2/:captureId/:filename", async (req, res) => {
+  const s3Key = `recordings/${req.params.filename}`;
+  const localPath = getRecordingPath(req.params.filename);
+
+  // Serve from local cache if already downloaded
+  if (recordingExists(req.params.filename)) {
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.sendFile(localPath);
+    return;
+  }
+
+  // Download from R2 using execFile (safe, no shell injection)
+  const { execFile } = require("child_process");
+  const env = {
+    ...process.env,
+    AWS_ACCESS_KEY_ID: S3_ACCESS_KEY,
+    AWS_SECRET_ACCESS_KEY: S3_SECRET_KEY,
+  };
+
+  execFile(
+    "aws",
+    ["s3", "cp", `s3://${S3_BUCKET}/${s3Key}`, localPath, "--endpoint-url", S3_ENDPOINT!],
+    { env },
+    (err: any) => {
+      if (err) {
+        console.error("[R2] Download failed:", err.message);
+        res.status(404).json({ error: "Recording not found in R2" });
+        return;
+      }
+      console.log(`[R2] Downloaded ${req.params.filename}`);
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.sendFile(localPath);
+    },
+  );
+});
+
 // ── Serve local recordings ──────────────────────────────────────────
 
 app.get("/api/recordings/:filename", (req, res) => {
@@ -394,7 +461,7 @@ app.get("/api/recordings/:filename", (req, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  res.setHeader("Content-Type", "audio/ogg");
+  res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader("Cache-Control", "public, max-age=86400");
   res.sendFile(getRecordingPath(filename));
 });
