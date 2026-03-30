@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { useSessionSocket } from "@/lib/use-session-socket";
 import type { Capture } from "@/lib/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
@@ -16,195 +14,176 @@ const API = process.env.NEXT_PUBLIC_API_URL || "";
 const statusConfig: Record<string, { label: string; color: string; dot: string }> = {
   created: { label: "Ready", color: "bg-zinc-700 text-zinc-300", dot: "bg-zinc-400" },
   calling: { label: "Calling...", color: "bg-yellow-900 text-yellow-300", dot: "bg-yellow-400 animate-pulse" },
-  active: { label: "Recording", color: "bg-red-900 text-red-300", dot: "bg-red-400 animate-pulse" },
-  ended: { label: "Ended", color: "bg-zinc-800 text-zinc-400", dot: "bg-zinc-500" },
+  active: { label: "In Call", color: "bg-green-900 text-green-300", dot: "bg-green-400 animate-pulse" },
+  ended: { label: "Processing...", color: "bg-blue-900 text-blue-300", dot: "bg-blue-400 animate-pulse" },
+  completed: { label: "Recording Ready", color: "bg-emerald-900 text-emerald-300", dot: "bg-emerald-400" },
 };
 
 export default function CaptureDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const captureId = params.id as string;
-
+  const id = params.id as string;
   const [capture, setCapture] = useState<Capture | null>(null);
   const [loading, setLoading] = useState(true);
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  const { status, transcript, recordingUrl: wsRecordingUrl, callEvents } = useSessionSocket(
-    capture ? captureId : null
-  );
+  const load = useCallback(async () => {
+    const res = await fetch(`${API}/api/captures/${id}`);
+    if (res.ok) {
+      setCapture(await res.json());
+      setLoading(false);
+    } else {
+      toast.error("Capture not found");
+      router.push("/capture");
+    }
+  }, [id, router]);
 
-  // Use recording URL from WebSocket (live) or initial fetch (page reload)
-  const recordingUrl = wsRecordingUrl || capture?.recordingUrl || null;
-
+  // Poll for status updates
   useEffect(() => {
-    fetch(`${API}/api/captures/${captureId}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data) => { setCapture(data); setLoading(false); })
-      .catch(() => { toast.error("Capture not found"); router.push("/capture"); });
-  }, [captureId, router]);
-
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
+    load();
+    const i = setInterval(load, 3000);
+    return () => clearInterval(i);
+  }, [load]);
 
   async function startCall() {
-    const res = await fetch(`${API}/api/captures/${captureId}/start`, { method: "POST" });
-    if (res.ok) toast.success("Calling both numbers...");
-    else toast.error((await res.json()).error || "Failed");
+    const res = await fetch(`${API}/api/captures/${id}/start`, { method: "POST" });
+    if (res.ok) { toast.success("Calling both phones..."); load(); }
+    else toast.error((await res.json()).error || "Failed to start");
   }
 
   async function endCall() {
-    const res = await fetch(`${API}/api/captures/${captureId}/end`, { method: "POST" });
-    if (res.ok) toast.info("Call ended");
-    else toast.error((await res.json()).error || "Failed");
-  }
-
-  function exportDataset() {
-    window.open(`${API}/api/captures/${captureId}/export`, "_blank");
+    const res = await fetch(`${API}/api/captures/${id}/end`, { method: "POST" });
+    if (res.ok) { toast.info("Call ended. Recording being processed..."); load(); }
+    else toast.error((await res.json()).error || "Failed to end");
   }
 
   if (loading || !capture) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
   }
 
-  const cfg = statusConfig[status] ?? statusConfig.created;
-  const finalCount = transcript.filter((t) => t.isFinal).length;
+  const cfg = statusConfig[capture.status] ?? statusConfig.created;
+  const formatDuration = (s?: number | null) => {
+    if (!s) return "—";
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  };
+
+  const recordingFilename = capture.localRecordingPath ? `${capture.id}-mixed.ogg` : null;
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/capture")}>
-            Back
-          </Button>
+          <Button variant="ghost" size="sm" onClick={() => router.push("/capture")}>Back</Button>
           <Separator orientation="vertical" className="h-6" />
           <div>
             <h1 className="text-sm font-semibold">{capture.name}</h1>
             <p className="text-xs text-muted-foreground font-mono">
-              {capture.phoneA} ↔ {capture.phoneB} ({capture.language})
+              {capture.phoneA} ↔ {capture.phoneB}
             </p>
           </div>
         </div>
-
         <div className="flex items-center gap-3">
           <Badge className={cfg.color}>
             <span className={`w-2 h-2 rounded-full mr-1.5 ${cfg.dot}`} />
             {cfg.label}
           </Badge>
-
-          {status === "created" && <Button size="sm" onClick={startCall}>Start Call</Button>}
-          {(status === "calling" || status === "active") && (
+          {capture.status === "created" && <Button size="sm" onClick={startCall}>Start Call</Button>}
+          {(capture.status === "calling" || capture.status === "active") && (
             <Button size="sm" variant="destructive" onClick={endCall}>End Call</Button>
-          )}
-          {status === "ended" && (
-            <>
-              <Button size="sm" onClick={() => router.push(`/capture/${captureId}/review`)}>
-                Review Audio
-              </Button>
-              <Button size="sm" variant="outline" onClick={exportDataset}>
-                Export Dataset
-              </Button>
-            </>
           )}
         </div>
       </header>
 
-      {/* Transcript + stats */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Transcript */}
-        <div className="flex-1 flex flex-col">
-          <div className="px-4 py-2 border-b flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-medium">Live Transcript</h2>
-              <p className="text-xs text-muted-foreground">{finalCount} utterances captured</p>
-            </div>
-            {status === "active" && (
-              <div className="flex items-center gap-2 text-xs text-red-400">
-                <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
-                Recording
+      {/* Body */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-lg space-y-6">
+          {/* Status card */}
+          <Card>
+            <CardContent className="py-6 space-y-4">
+              <div className="text-center">
+                {capture.status === "created" && (
+                  <p className="text-muted-foreground">Click "Start Call" to bridge both phones and begin recording.</p>
+                )}
+                {capture.status === "calling" && (
+                  <div className="space-y-2">
+                    <div className="w-8 h-8 mx-auto border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-yellow-300">Calling both numbers...</p>
+                  </div>
+                )}
+                {capture.status === "active" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="w-3 h-3 rounded-full bg-green-400 animate-pulse" />
+                      <span className="text-green-300 font-medium">Call in progress</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Both parties are connected. Recording in progress.</p>
+                  </div>
+                )}
+                {capture.status === "ended" && (
+                  <div className="space-y-2">
+                    <div className="w-8 h-8 mx-auto border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-blue-300">Uploading recording to storage...</p>
+                    <p className="text-xs text-muted-foreground">This usually takes 10-30 seconds.</p>
+                  </div>
+                )}
+                {capture.status === "completed" && recordingFilename && (
+                  <div className="space-y-4">
+                    <p className="text-emerald-300 font-medium">Recording ready</p>
+                    <audio
+                      controls
+                      className="w-full"
+                      src={`${API}/api/recordings/${recordingFilename}`}
+                    />
+                    {capture.recordingUrl && (
+                      <p className="text-[10px] text-muted-foreground font-mono break-all">
+                        S3: {capture.recordingUrl}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {capture.status === "completed" && !recordingFilename && capture.recordingUrl && (
+                  <div className="space-y-4">
+                    <p className="text-emerald-300 font-medium">Recording ready (S3)</p>
+                    <audio controls className="w-full" src={capture.recordingUrl} />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-3">
-              {transcript.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  {status === "created" ? "Start the call to begin recording" : "Waiting for audio..."}
-                </p>
-              )}
-              {transcript.map((entry, i) => (
-                <div key={`${entry.timestamp}-${i}`} className={`flex gap-3 ${!entry.isFinal ? "opacity-50" : ""}`}>
-                  <div className={`w-20 shrink-0 text-xs font-mono font-medium pt-0.5 ${
-                    entry.speaker === "caller_a" ? "text-blue-400" : "text-orange-400"
-                  }`}>
-                    {entry.speaker === "caller_a" ? "PHONE A" : "PHONE B"}
-                  </div>
-                  <div className="text-sm leading-relaxed">
-                    {entry.text}
-                    {!entry.isFinal && <span className="text-muted-foreground ml-1">...</span>}
-                  </div>
+            </CardContent>
+          </Card>
+
+          {/* Info card */}
+          <Card>
+            <CardContent className="py-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Phone A</p>
+                  <p className="font-mono">{capture.phoneA}</p>
                 </div>
-              ))}
-              <div ref={transcriptEndRef} />
-            </div>
-          </ScrollArea>
-        </div>
-
-        {/* Right sidebar — stats + events */}
-        <div className="w-72 border-l flex flex-col">
-          <div className="p-4 border-b">
-            <h3 className="text-sm font-medium mb-3">Capture Info</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Phone A</span>
-                <span className="font-mono text-xs">{capture.phoneA}</span>
+                <div>
+                  <p className="text-muted-foreground text-xs">Phone B</p>
+                  <p className="font-mono">{capture.phoneB}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Language</p>
+                  <p>{capture.language}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Duration</p>
+                  <p className="font-mono">{formatDuration(capture.durationSeconds)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Created</p>
+                  <p className="text-xs">{new Date(capture.createdAt).toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Status</p>
+                  <p>{capture.status}</p>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Phone B</span>
-                <span className="font-mono text-xs">{capture.phoneB}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Language</span>
-                <Badge variant="outline" className="text-xs">{capture.language}</Badge>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Utterances</span>
-                <span className="font-mono">{finalCount}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Audio player */}
-          {recordingUrl && (
-            <div className="p-4 border-b">
-              <h3 className="text-sm font-medium mb-3">Recording</h3>
-              <audio
-                controls
-                className="w-full h-10"
-                src={`${API}/api/recordings/${recordingUrl.match(/Recordings\/([^.]+)/)?.[1] ?? ""}`}
-              />
-              <p className="text-[10px] text-muted-foreground mt-2 font-mono truncate">
-                {recordingUrl.match(/Recordings\/([^.]+)/)?.[1]}
-              </p>
-            </div>
-          )}
-
-          <div className="flex-1 p-4">
-            <h3 className="text-sm font-medium mb-2">Call Events</h3>
-            <div className="space-y-1 overflow-y-auto">
-              {callEvents.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No events yet</p>
-              ) : (
-                callEvents.slice(-10).map((e, i) => (
-                  <p key={i} className="text-xs font-mono text-muted-foreground">
-                    <span className="text-zinc-500">{new Date(e.time).toLocaleTimeString()}</span>{" "}
-                    {e.speaker}: {e.event}
-                  </p>
-                ))
-              )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

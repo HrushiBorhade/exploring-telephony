@@ -15,6 +15,7 @@ The global network of phone lines, cell towers, and switches that connects every
 
 **SIP (Session Initiation Protocol)**
 The language that phone systems use to talk to each other over the internet. When a call is made, SIP handles:
+
 - "Hey, I want to call this number" → SIP INVITE message
 - "OK, ringing..." → SIP 180 Ringing
 - "They picked up!" → SIP 200 OK
@@ -41,6 +42,7 @@ Phone Call (SIP) → LiveKit SIP Bridge → LiveKit Room (WebRTC)
 
 **DTMF (Dual-Tone Multi-Frequency)**
 The tones you hear when you press buttons on your phone keypad. Each button produces two frequencies mixed together:
+
 - Pressing "1" = 697 Hz + 1209 Hz
 - Pressing "5" = 770 Hz + 1336 Hz
 
@@ -53,6 +55,7 @@ The automated phone menu system. "Press 1 for sales, Press 2 for support..." Tha
 
 **Codec (Coder-Decoder)**
 A codec compresses audio for transmission and decompresses it on the other end. Different codecs trade off between quality, bandwidth, and latency:
+
 - **mulaw (G.711u)**: The standard telephone codec since 1972. 8kHz sample rate, 64kbps. "Phone quality" — good enough to understand speech, not great for music.
 - **PCM (L16)**: Raw uncompressed audio. Perfect quality but uses more bandwidth. Best for ASR because there are no compression artifacts.
 - **G.722**: "HD Voice" — 16kHz in the same 64kbps as mulaw. Sounds noticeably better. Many modern phones support it.
@@ -60,6 +63,7 @@ A codec compresses audio for transmission and decompresses it on the other end. 
 
 **Sample Rate**
 How many times per second audio is measured. Higher = better quality:
+
 - 8,000 Hz (8kHz) = telephone quality. Can reproduce sounds up to 4kHz. Speech is intelligible but "tinny."
 - 16,000 Hz (16kHz) = wideband / HD voice. Can reproduce sounds up to 8kHz. Noticeably clearer.
 - 44,100 Hz (44.1kHz) = CD quality.
@@ -74,14 +78,17 @@ In our code, Twilio/Telnyx sends audio as mulaw-encoded, base64-wrapped chunks o
 
 **Base64**
 A way to encode binary data (like audio bytes) as text characters (A-Z, a-z, 0-9, +, /). WebSocket messages are often JSON text, so binary audio needs to be base64-encoded to travel inside JSON:
+
 ```
 Raw audio bytes: [0xFF, 0x7F, 0x00, 0x3C, ...]
 Base64 encoded:  "/38APP..."
 ```
+
 Our server decodes: `Buffer.from(payload, "base64")` → raw audio bytes → send to Deepgram.
 
 **Track**
 In telephony/media, a "track" is one stream of audio from one direction:
+
 - **Inbound track**: Audio coming FROM the caller (what they say into their phone)
 - **Outbound track**: Audio going TO the caller (what they hear)
 - **Both tracks**: Both directions mixed together
@@ -107,6 +114,7 @@ One continuous chunk of speech from one speaker. "Hello, I want to know about ho
 
 **Interim vs Final Results**
 ASR engines send results as they hear audio:
+
 - **Interim**: "I want to kn..." → "I want to know ab..." → "I want to know about ho..." (updates every ~200ms, may change)
 - **Final**: "I want to know about home loans." (Deepgram is confident, won't change)
 
@@ -114,10 +122,12 @@ We display interim results for real-time feel but only STORE final results in th
 
 **Word-Level Timestamps**
 Deepgram returns the exact start/end time (in seconds) for every word:
+
 ```json
 { "word": "hello", "start": 0.10, "end": 0.45, "confidence": 0.99 }
 { "word": "I",     "start": 0.50, "end": 0.60, "confidence": 0.98 }
 ```
+
 This lets you click on any word and seek the audio to that exact moment.
 
 **Confidence Score**
@@ -130,6 +140,7 @@ LiveKit's fundamental container. A virtual space where participants meet. Like a
 
 **Participant**
 Anyone or anything in a LiveKit room:
+
 - **STANDARD**: A human joining via browser/mobile (WebRTC)
 - **SIP**: A phone caller bridged in via the SIP bridge
 - **AGENT**: An AI agent running server-side
@@ -137,6 +148,7 @@ Anyone or anything in a LiveKit room:
 
 **Egress**
 The process of getting media OUT of a LiveKit room. "Egress" literally means "exit." Types:
+
 - **Room Composite Egress**: Record the entire room (all participants mixed) to a file
 - **Track Egress**: Export a single participant's audio/video track to a WebSocket or file
 - **Web Egress**: Render a web page that shows the room, record that
@@ -171,26 +183,26 @@ AI technique that figures out "who spoke when" from a mixed audio file. Unnecess
 ## Table of Contents
 
 1. [TELNYX](#telnyx)
-   - [Overview & NPM Setup](#telnyx-overview--npm-setup)
-   - [Call Control API (Voice API)](#call-control-api-voice-api)
-   - [TeXML](#texml)
-   - [TeXML vs Call Control: When to Use Which](#texml-vs-call-control-when-to-use-which)
-   - [Conferencing](#telnyx-conferencing)
-   - [Media Streaming (WebSocket)](#media-streaming-websocket)
-   - [Recording](#telnyx-recording)
+  - [Overview & NPM Setup](#telnyx-overview--npm-setup)
+  - [Call Control API (Voice API)](#call-control-api-voice-api)
+  - [TeXML](#texml)
+  - [TeXML vs Call Control: When to Use Which](#texml-vs-call-control-when-to-use-which)
+  - [Conferencing](#telnyx-conferencing)
+  - [Media Streaming (WebSocket)](#media-streaming-websocket)
+  - [Recording](#telnyx-recording)
 2. [LIVEKIT](#livekit)
-   - [Overview & NPM Setup](#livekit-overview--npm-setup)
-   - [Rooms](#livekit-rooms)
-   - [Participants & Tokens](#participants--tokens)
-   - [SIP Bridge (Telephony)](#sip-bridge-telephony)
-   - [Egress / Recording](#egress--recording)
-   - [Agents Framework](#agents-framework)
+  - [Overview & NPM Setup](#livekit-overview--npm-setup)
+  - [Rooms](#livekit-rooms)
+  - [Participants & Tokens](#participants--tokens)
+  - [SIP Bridge (Telephony)](#sip-bridge-telephony)
+  - [Egress / Recording](#egress--recording)
+  - [Agents Framework](#agents-framework)
 3. [COMBINED ARCHITECTURE: Telnyx + LiveKit](#combined-architecture-telnyx--livekit)
-   - [Architecture Diagram](#architecture-diagram)
-   - [Audio Flow](#audio-flow)
-   - [Setting Up Telnyx as SIP Provider for LiveKit](#setting-up-telnyx-as-sip-provider-for-livekit)
-   - [Complete Code: Bridge Two Phone Numbers via LiveKit Room](#complete-code-bridge-two-phone-numbers-via-livekit-room)
-   - [Complete Code: Voice AI Agent Handling Phone Calls](#complete-code-voice-ai-agent-handling-phone-calls)
+  - [Architecture Diagram](#architecture-diagram)
+  - [Audio Flow](#audio-flow)
+  - [Setting Up Telnyx as SIP Provider for LiveKit](#setting-up-telnyx-as-sip-provider-for-livekit)
+  - [Complete Code: Bridge Two Phone Numbers via LiveKit Room](#complete-code-bridge-two-phone-numbers-via-livekit-room)
+  - [Complete Code: Voice AI Agent Handling Phone Calls](#complete-code-voice-ai-agent-handling-phone-calls)
 
 ---
 
@@ -214,6 +226,7 @@ const telnyx = new Telnyx('YOUR_API_KEY');
 **Base URL:** `https://api.telnyx.com/v2`
 
 **Core concepts:**
+
 - **Connection:** A Voice API Application (or FQDN connection, or Credential connection) that defines how calls are handled
 - **connection_id:** Links your phone number to a voice application
 - **call_control_id:** Unique ID for each call leg, used to send commands to that call
@@ -266,6 +279,7 @@ const callControlId = response.data.data.call_control_id;
 ### Webhook Event Payloads
 
 **call.initiated:**
+
 ```json
 {
   "event_type": "call.initiated",
@@ -281,6 +295,7 @@ const callControlId = response.data.data.call_control_id;
 ```
 
 **call.answered:**
+
 ```json
 {
   "event_type": "call.answered",
@@ -294,6 +309,7 @@ const callControlId = response.data.data.call_control_id;
 ```
 
 **call.hangup:**
+
 ```json
 {
   "event_type": "call.hangup",
@@ -319,22 +335,24 @@ await axios.post(
 
 ### All Available Call Control Commands
 
-| Command | Endpoint | Purpose |
-|---------|----------|---------|
-| `answer` | `/calls/{id}/actions/answer` | Answer an incoming call |
-| `hangup` | `/calls/{id}/actions/hangup` | Terminate the call |
-| `bridge` | `/calls/{id}/actions/bridge` | Bridge two call legs |
-| `transfer` | `/calls/{id}/actions/transfer` | Transfer to another number |
-| `speak` | `/calls/{id}/actions/speak` | Text-to-speech |
-| `playback_start` | `/calls/{id}/actions/playback_start` | Play audio file |
-| `gather` | `/calls/{id}/actions/gather` | Collect DTMF/speech input |
-| `record_start` | `/calls/{id}/actions/record_start` | Start recording |
-| `record_stop` | `/calls/{id}/actions/record_stop` | Stop recording |
-| `streaming_start` | `/calls/{id}/actions/streaming_start` | Start media streaming |
-| `streaming_stop` | `/calls/{id}/actions/streaming_stop` | Stop media streaming |
-| `create_conf` | `/calls/{id}/actions/create_conf` | Create a conference from this call |
-| `join` | `/calls/{id}/actions/join` | Join an existing conference |
-| `send_dtmf` | `/calls/{id}/actions/send_dtmf` | Send DTMF tones |
+
+| Command           | Endpoint                              | Purpose                            |
+| ----------------- | ------------------------------------- | ---------------------------------- |
+| `answer`          | `/calls/{id}/actions/answer`          | Answer an incoming call            |
+| `hangup`          | `/calls/{id}/actions/hangup`          | Terminate the call                 |
+| `bridge`          | `/calls/{id}/actions/bridge`          | Bridge two call legs               |
+| `transfer`        | `/calls/{id}/actions/transfer`        | Transfer to another number         |
+| `speak`           | `/calls/{id}/actions/speak`           | Text-to-speech                     |
+| `playback_start`  | `/calls/{id}/actions/playback_start`  | Play audio file                    |
+| `gather`          | `/calls/{id}/actions/gather`          | Collect DTMF/speech input          |
+| `record_start`    | `/calls/{id}/actions/record_start`    | Start recording                    |
+| `record_stop`     | `/calls/{id}/actions/record_stop`     | Stop recording                     |
+| `streaming_start` | `/calls/{id}/actions/streaming_start` | Start media streaming              |
+| `streaming_stop`  | `/calls/{id}/actions/streaming_stop`  | Stop media streaming               |
+| `create_conf`     | `/calls/{id}/actions/create_conf`     | Create a conference from this call |
+| `join`            | `/calls/{id}/actions/join`            | Join an existing conference        |
+| `send_dtmf`       | `/calls/{id}/actions/send_dtmf`       | Send DTMF tones                    |
+
 
 ### Complete Webhook Handler (Node.js/Express)
 
@@ -400,6 +418,7 @@ app.listen(3001, () => console.log('Telnyx webhook server running on :3001'));
 ### Webhook Signature Verification
 
 Telnyx signs webhooks with ED25519 signatures. Headers to check:
+
 - `telnyx-signature-ed25519`
 - `telnyx-timestamp`
 
@@ -429,20 +448,22 @@ TeXML is Telnyx's **XML-based language** for managing voice calls. It is modeled
 
 ### TeXML Verbs
 
-| Verb | Purpose |
-|------|---------|
-| `<Say>` | Text-to-speech |
-| `<Play>` | Play an audio file |
-| `<Gather>` | Collect DTMF/speech input |
-| `<Dial>` | Connect to another party |
-| `<Conference>` | Join a conference room |
-| `<Record>` | Record the caller |
-| `<Stream>` | Stream media to WebSocket |
-| `<Redirect>` | Redirect to new TeXML URL |
-| `<Hangup>` | End the call |
-| `<Pause>` | Wait N seconds |
-| `<Reject>` | Reject the call |
-| `<Queue>` | Place in a queue |
+
+| Verb           | Purpose                   |
+| -------------- | ------------------------- |
+| `<Say>`        | Text-to-speech            |
+| `<Play>`       | Play an audio file        |
+| `<Gather>`     | Collect DTMF/speech input |
+| `<Dial>`       | Connect to another party  |
+| `<Conference>` | Join a conference room    |
+| `<Record>`     | Record the caller         |
+| `<Stream>`     | Stream media to WebSocket |
+| `<Redirect>`   | Redirect to new TeXML URL |
+| `<Hangup>`     | End the call              |
+| `<Pause>`      | Wait N seconds            |
+| `<Reject>`     | Reject the call           |
+| `<Queue>`      | Place in a queue          |
+
 
 ### TeXML Conference Example
 
@@ -482,18 +503,21 @@ TeXML is Telnyx's **XML-based language** for managing voice calls. It is modeled
 
 ## TeXML vs Call Control: When to Use Which
 
-| Aspect | TeXML | Call Control (Voice API) |
-|--------|-------|------------------------|
-| **Model** | Declarative XML responses | Imperative REST commands + webhooks |
-| **Complexity** | Lower -- XML scripts define flow | Higher -- full programmatic control |
-| **Real-time logic** | Limited -- predefined flow | Full -- respond to events dynamically |
-| **Migration from Twilio** | Easy -- nearly 1:1 TwiML compatible | Requires rewrite |
-| **AI agent integration** | Harder | Ideal -- dynamic, event-driven |
-| **Use case** | IVRs, simple forwarding, voicemail | AI voice agents, complex routing, real-time decisions |
-| **Latency** | XML fetch adds a round-trip | Direct REST commands |
-| **Learning curve** | Low (especially if you know TwiML) | Medium-high |
+
+| Aspect                    | TeXML                               | Call Control (Voice API)                              |
+| ------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| **Model**                 | Declarative XML responses           | Imperative REST commands + webhooks                   |
+| **Complexity**            | Lower -- XML scripts define flow    | Higher -- full programmatic control                   |
+| **Real-time logic**       | Limited -- predefined flow          | Full -- respond to events dynamically                 |
+| **Migration from Twilio** | Easy -- nearly 1:1 TwiML compatible | Requires rewrite                                      |
+| **AI agent integration**  | Harder                              | Ideal -- dynamic, event-driven                        |
+| **Use case**              | IVRs, simple forwarding, voicemail  | AI voice agents, complex routing, real-time decisions |
+| **Latency**               | XML fetch adds a round-trip         | Direct REST commands                                  |
+| **Learning curve**        | Low (especially if you know TwiML)  | Medium-high                                           |
+
 
 **Rule of thumb:**
+
 - **TeXML** = "I want simple call flows with minimal code, especially migrating from Twilio"
 - **Call Control** = "I need full real-time control, building AI agents, complex routing logic"
 
@@ -655,12 +679,14 @@ app.post('/webhooks/conference', async (req, res) => {
 
 ### Conference Webhook Events
 
-| Event | When |
-|-------|------|
-| `conference.created` | Conference room is ready |
-| `conference.participant.joined` | Someone enters |
-| `conference.participant.left` | Someone leaves |
-| `conference.ended` | Last participant left |
+
+| Event                           | When                     |
+| ------------------------------- | ------------------------ |
+| `conference.created`            | Conference room is ready |
+| `conference.participant.joined` | Someone enters           |
+| `conference.participant.left`   | Someone leaves           |
+| `conference.ended`              | Last participant left    |
+
 
 ---
 
@@ -673,6 +699,7 @@ Media streaming forks call audio to a WebSocket in near-realtime without degradi
 You can start streaming in three ways:
 
 **1. When dialing:**
+
 ```bash
 curl -X POST https://api.telnyx.com/v2/calls \
   -H "Authorization: Bearer $API_KEY" \
@@ -687,6 +714,7 @@ curl -X POST https://api.telnyx.com/v2/calls \
 ```
 
 **2. When answering:**
+
 ```bash
 curl -X POST https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer \
   -H "Authorization: Bearer $API_KEY" \
@@ -697,6 +725,7 @@ curl -X POST https://api.telnyx.com/v2/calls/{call_control_id}/actions/answer \
 ```
 
 **3. Mid-call via streaming_start:**
+
 ```bash
 curl -X POST https://api.telnyx.com/v2/calls/{call_control_id}/actions/streaming_start \
   -H "Authorization: Bearer $API_KEY" \
@@ -708,28 +737,33 @@ curl -X POST https://api.telnyx.com/v2/calls/{call_control_id}/actions/streaming
 
 ### stream_track Options
 
-| Value | Description |
-|-------|-------------|
-| `inbound_track` | Audio from the caller (default) |
-| `outbound_track` | Audio going to the caller |
-| `both_tracks` | Both directions |
+
+| Value            | Description                     |
+| ---------------- | ------------------------------- |
+| `inbound_track`  | Audio from the caller (default) |
+| `outbound_track` | Audio going to the caller       |
+| `both_tracks`    | Both directions                 |
+
 
 ### Audio Codec / Format Options
 
-| Codec | Sample Rate | Notes |
-|-------|------------|-------|
-| `PCMU` (G.711u) | 8000 Hz | Default, widely compatible |
-| `PCMA` (G.711a) | 8000 Hz | European standard |
-| `G722` | 16000 Hz | HD voice |
-| `OPUS` | 16000 Hz | Modern, efficient |
-| `AMR-WB` | 16000 Hz | Mobile networks |
-| `L16` | Various | **Recommended for AI** -- raw linear PCM, no transcoding overhead |
+
+| Codec           | Sample Rate | Notes                                                             |
+| --------------- | ----------- | ----------------------------------------------------------------- |
+| `PCMU` (G.711u) | 8000 Hz     | Default, widely compatible                                        |
+| `PCMA` (G.711a) | 8000 Hz     | European standard                                                 |
+| `G722`          | 16000 Hz    | HD voice                                                          |
+| `OPUS`          | 16000 Hz    | Modern, efficient                                                 |
+| `AMR-WB`        | 16000 Hz    | Mobile networks                                                   |
+| `L16`           | Various     | **Recommended for AI** -- raw linear PCM, no transcoding overhead |
+
 
 ### WebSocket Event Flow
 
 When your WebSocket server receives a connection from Telnyx, events arrive in this order:
 
 **1. Connected:**
+
 ```json
 {
   "event": "connected",
@@ -738,6 +772,7 @@ When your WebSocket server receives a connection from Telnyx, events arrive in t
 ```
 
 **2. Start (stream metadata):**
+
 ```json
 {
   "event": "start",
@@ -759,6 +794,7 @@ When your WebSocket server receives a connection from Telnyx, events arrive in t
 ```
 
 **3. Media (audio chunks -- repeating):**
+
 ```json
 {
   "event": "media",
@@ -774,6 +810,7 @@ When your WebSocket server receives a connection from Telnyx, events arrive in t
 ```
 
 **4. Stop:**
+
 ```json
 {
   "event": "stop",
@@ -787,6 +824,7 @@ When your WebSocket server receives a connection from Telnyx, events arrive in t
 ```
 
 **DTMF Event:**
+
 ```json
 {
   "event": "dtmf",
@@ -818,6 +856,7 @@ curl -X POST https://api.telnyx.com/v2/calls \
 ```
 
 **Send audio back to the caller:**
+
 ```json
 {
   "event": "media",
@@ -828,6 +867,7 @@ curl -X POST https://api.telnyx.com/v2/calls \
 ```
 
 **Send MP3 file:**
+
 ```json
 {
   "event": "media",
@@ -838,6 +878,7 @@ curl -X POST https://api.telnyx.com/v2/calls \
 ```
 
 **Clear audio queue (interrupt):**
+
 ```json
 {
   "event": "clear"
@@ -845,12 +886,14 @@ curl -X POST https://api.telnyx.com/v2/calls \
 ```
 
 **Mark messages (track playback completion):**
+
 ```json
 {
   "event": "mark",
   "mark": { "name": "greeting-end" }
 }
 ```
+
 When the audio before this mark finishes playing, you receive the mark event back.
 
 ### Bidirectional Constraints
@@ -939,12 +982,14 @@ console.log('Media streaming WebSocket server running on :8080');
 
 ### Error Codes
 
-| Code | Title | Description |
-|------|-------|-------------|
-| 100002 | unknown_error | Stream processing failure |
-| 100003 | malformed_frame | Incorrectly formatted frame |
-| 100004 | invalid_media | Non-base64 encoded media |
+
+| Code   | Title              | Description                 |
+| ------ | ------------------ | --------------------------- |
+| 100002 | unknown_error      | Stream processing failure   |
+| 100003 | malformed_frame    | Incorrectly formatted frame |
+| 100004 | invalid_media      | Non-base64 encoded media    |
 | 100005 | rate_limit_reached | Excessive request frequency |
+
 
 ---
 
@@ -1016,21 +1061,25 @@ LiveKit is an **open-source, real-time communication platform** built on WebRTC.
 ### NPM Packages
 
 **Server SDK (backend -- room management, tokens, SIP):**
+
 ```bash
 npm install livekit-server-sdk
 ```
 
 **Client SDK (frontend -- connecting to rooms):**
+
 ```bash
 npm install livekit-client
 ```
 
 **Agents framework (AI agents):**
+
 ```bash
 npm install @livekit/agents
 ```
 
 **Agent plugins:**
+
 ```bash
 npm install @livekit/agents-plugin-openai      # LLM, TTS, STT
 npm install @livekit/agents-plugin-deepgram     # STT, TTS
@@ -1043,6 +1092,7 @@ npm install @livekit/noise-cancellation-node    # Noise cancellation
 ```
 
 **Environment variables:**
+
 ```bash
 export LIVEKIT_URL="wss://your-project.livekit.cloud"
 export LIVEKIT_API_KEY="your-api-key"
@@ -1092,13 +1142,15 @@ await roomService.deleteRoom('my-conference-room');
 
 ### Participant Types
 
-| Kind | Description |
-|------|-------------|
-| `STANDARD` | Regular end-user |
-| `AGENT` | AI agent (via Agents framework) |
-| `SIP` | Phone call participant |
-| `EGRESS` | Recording process |
-| `INGRESS` | Media ingestion process |
+
+| Kind       | Description                     |
+| ---------- | ------------------------------- |
+| `STANDARD` | Regular end-user                |
+| `AGENT`    | AI agent (via Agents framework) |
+| `SIP`      | Phone call participant          |
+| `EGRESS`   | Recording process               |
+| `INGRESS`  | Media ingestion process         |
+
 
 ### Generating Access Tokens
 
@@ -1148,19 +1200,21 @@ adminToken.addGrant(videoGrant);
 
 ### Video Grant Permissions
 
-| Permission | Type | Purpose |
-|------------|------|---------|
-| `roomCreate` | boolean | Create/delete rooms |
-| `roomList` | boolean | List rooms |
-| `roomJoin` | boolean | Join a room |
-| `roomAdmin` | boolean | Moderate (mute, remove, etc.) |
-| `roomRecord` | boolean | Use Egress service |
-| `room` | string | Room name to join |
-| `canPublish` | boolean | Publish audio/video tracks |
-| `canPublishData` | boolean | Publish data messages |
-| `canSubscribe` | boolean | Subscribe to others' tracks |
+
+| Permission          | Type     | Purpose                                                                        |
+| ------------------- | -------- | ------------------------------------------------------------------------------ |
+| `roomCreate`        | boolean  | Create/delete rooms                                                            |
+| `roomList`          | boolean  | List rooms                                                                     |
+| `roomJoin`          | boolean  | Join a room                                                                    |
+| `roomAdmin`         | boolean  | Moderate (mute, remove, etc.)                                                  |
+| `roomRecord`        | boolean  | Use Egress service                                                             |
+| `room`              | string   | Room name to join                                                              |
+| `canPublish`        | boolean  | Publish audio/video tracks                                                     |
+| `canPublishData`    | boolean  | Publish data messages                                                          |
+| `canSubscribe`      | boolean  | Subscribe to others' tracks                                                    |
 | `canPublishSources` | string[] | Restrict sources: `camera`, `microphone`, `screen_share`, `screen_share_audio` |
-| `hidden` | boolean | Invisible to other participants |
+| `hidden`            | boolean  | Invisible to other participants                                                |
+
 
 ### Managing Participants (Server-Side)
 
@@ -1326,18 +1380,20 @@ console.log('SIP participant:', sipParticipant);
 
 ### Supported SIP Features
 
-| Feature | Supported |
-|---------|-----------|
-| SIP over UDP/TCP/TLS | Yes |
-| DTMF (RFC 2833/4733) | Yes |
-| Cold call transfer (REFER) | Yes |
-| Warm call transfer (agent-assisted) | Yes |
-| Caller ID | Yes |
-| RTP / SRTP | Yes |
-| SIP OPTIONS | Yes |
-| SIP Registration (REGISTER) | No |
-| SIPRECT | No |
-| Video over SIP | No |
+
+| Feature                             | Supported |
+| ----------------------------------- | --------- |
+| SIP over UDP/TCP/TLS                | Yes       |
+| DTMF (RFC 2833/4733)                | Yes       |
+| Cold call transfer (REFER)          | Yes       |
+| Warm call transfer (agent-assisted) | Yes       |
+| Caller ID                           | Yes       |
+| RTP / SRTP                          | Yes       |
+| SIP OPTIONS                         | Yes       |
+| SIP Registration (REGISTER)         | No        |
+| SIPRECT                             | No        |
+| Video over SIP                      | No        |
+
 
 ### Tested SIP Providers
 
@@ -1351,13 +1407,15 @@ LiveKit Egress exports room sessions or individual tracks as recordings.
 
 ### Egress Types
 
-| Type | What it records | Use case |
-|------|----------------|----------|
-| **RoomComposite** | Entire room (all participants) | Meeting recordings |
-| **Participant** | One participant's audio + video | Speaker isolation |
-| **TrackComposite** | Specific audio + video tracks | Post-production |
-| **Track** | Single track (no transcoding) | Streaming audio to STT |
-| **Web** | Any web page | Restreaming |
+
+| Type               | What it records                 | Use case               |
+| ------------------ | ------------------------------- | ---------------------- |
+| **RoomComposite**  | Entire room (all participants)  | Meeting recordings     |
+| **Participant**    | One participant's audio + video | Speaker isolation      |
+| **TrackComposite** | Specific audio + video tracks   | Post-production        |
+| **Track**          | Single track (no transcoding)   | Streaming audio to STT |
+| **Web**            | Any web page                    | Restreaming            |
+
 
 ### Auto Egress (automatic recording on room creation)
 
@@ -1434,6 +1492,7 @@ User speaks → WebRTC Audio Track → Agent subscribes
 ### Voice Agent (Node.js/TypeScript)
 
 **agent.ts:**
+
 ```typescript
 import { voice } from '@livekit/agents';
 
@@ -1449,6 +1508,7 @@ export class Agent extends voice.Agent {
 ```
 
 **index.ts (entrypoint):**
+
 ```typescript
 import {
   type JobContext,
@@ -1532,13 +1592,15 @@ CARTESIA_API_KEY=...
 
 ### Agent Pipeline Nodes (Customization Points)
 
-| Node | Input | Output | Purpose |
-|------|-------|--------|---------|
-| `stt_node()` | AudioFrame stream | SpeechEvent stream | Custom STT or preprocessing |
-| `llm_node()` | ChatContext + tools | ChatChunk stream | Custom LLM or RAG injection |
-| `tts_node()` | Text stream | AudioFrame stream | Custom TTS or audio processing |
-| `on_user_turn_completed()` | -- | -- | Modify messages before LLM, add RAG context |
-| `realtime_audio_output_node()` | AudioFrame stream | AudioFrame stream | Audio post-processing |
+
+| Node                           | Input               | Output             | Purpose                                     |
+| ------------------------------ | ------------------- | ------------------ | ------------------------------------------- |
+| `stt_node()`                   | AudioFrame stream   | SpeechEvent stream | Custom STT or preprocessing                 |
+| `llm_node()`                   | ChatContext + tools | ChatChunk stream   | Custom LLM or RAG injection                 |
+| `tts_node()`                   | Text stream         | AudioFrame stream  | Custom TTS or audio processing              |
+| `on_user_turn_completed()`     | --                  | --                 | Modify messages before LLM, add RAG context |
+| `realtime_audio_output_node()` | AudioFrame stream   | AudioFrame stream  | Audio post-processing                       |
+
 
 ### Realtime Model Agent (Lower Latency)
 
@@ -1614,6 +1676,7 @@ export default defineAgent({
 ## Audio Flow
 
 **Inbound call (phone → your code):**
+
 ```
 1. User dials your Telnyx phone number
 2. Telnyx receives the call via PSTN
@@ -1627,6 +1690,7 @@ export default defineAgent({
 ```
 
 **Outbound call (your code → phone):**
+
 ```
 1. Your app calls CreateSIPParticipant API
 2. LiveKit sends SIP INVITE via outbound trunk to Telnyx
@@ -1637,6 +1701,7 @@ export default defineAgent({
 ```
 
 **Audio codec chain:**
+
 ```
 Phone (G.711) → Telnyx (G.711/G.722) → LiveKit SIP Bridge (Opus/WebRTC) → Room → Agent
 ```
@@ -1899,6 +1964,7 @@ console.log('Recording started:', egress.egressId);
 This is a complete LiveKit Agent that handles inbound phone calls from Telnyx.
 
 **agent.ts:**
+
 ```typescript
 import { voice, llm } from '@livekit/agents';
 import { z } from 'zod';
@@ -1941,6 +2007,7 @@ export class PhoneAgent extends voice.Agent {
 ```
 
 **index.ts:**
+
 ```typescript
 import {
   type JobContext,
@@ -2001,6 +2068,7 @@ cli.runApp(new ServerOptions({
 ```
 
 **Run:**
+
 ```bash
 # Install dependencies
 npm install @livekit/agents @livekit/agents-plugin-silero \
@@ -2012,8 +2080,9 @@ npx tsc && node dist/index.js dev
 ```
 
 Now when someone calls your Telnyx number:
+
 1. Telnyx routes the SIP INVITE to LiveKit
-2. LiveKit creates room "call-<unique-id>" (from dispatch rule)
+2. LiveKit creates room "call-" (from dispatch rule)
 3. LiveKit dispatches "voice-agent" into the room
 4. The agent greets the caller and begins conversing
 
@@ -2021,23 +2090,27 @@ Now when someone calls your Telnyx number:
 
 ## Comparison: Telnyx-Only vs Telnyx+LiveKit
 
-| Aspect | Telnyx Only (Call Control) | Telnyx + LiveKit |
-|--------|---------------------------|------------------|
-| **Audio access** | Media streaming WebSocket | WebRTC tracks in room |
-| **Multi-party** | Telnyx Conferences | LiveKit Rooms |
-| **AI agent** | Build custom via WebSocket | LiveKit Agents framework |
-| **Recording** | Telnyx recording API | LiveKit Egress |
-| **Scalability** | Telnyx handles it | LiveKit Cloud auto-scales |
-| **Complexity** | Medium (webhook/REST) | Higher setup, but more powerful |
-| **Latency** | Direct (Telnyx WebSocket) | Extra hop through SIP bridge |
-| **Best for** | Simple IVRs, direct AI integration via WebSocket | Multi-modal rooms, multiple participants, complex agent workflows |
+
+| Aspect           | Telnyx Only (Call Control)                       | Telnyx + LiveKit                                                  |
+| ---------------- | ------------------------------------------------ | ----------------------------------------------------------------- |
+| **Audio access** | Media streaming WebSocket                        | WebRTC tracks in room                                             |
+| **Multi-party**  | Telnyx Conferences                               | LiveKit Rooms                                                     |
+| **AI agent**     | Build custom via WebSocket                       | LiveKit Agents framework                                          |
+| **Recording**    | Telnyx recording API                             | LiveKit Egress                                                    |
+| **Scalability**  | Telnyx handles it                                | LiveKit Cloud auto-scales                                         |
+| **Complexity**   | Medium (webhook/REST)                            | Higher setup, but more powerful                                   |
+| **Latency**      | Direct (Telnyx WebSocket)                        | Extra hop through SIP bridge                                      |
+| **Best for**     | Simple IVRs, direct AI integration via WebSocket | Multi-modal rooms, multiple participants, complex agent workflows |
+
 
 ### When to use Telnyx alone:
+
 - Simple 1:1 call with AI agent via media streaming
 - Basic conference bridging
 - You want minimal infrastructure
 
 ### When to add LiveKit:
+
 - You need multiple participants (phone + web + AI agent) in one room
 - You want the Agents framework for STT-LLM-TTS pipeline
 - You need recording/egress with cloud storage
@@ -2045,11 +2118,13 @@ Now when someone calls your Telnyx number:
 - You need to mix phone calls with WebRTC browser participants
 
 ---
+
 ---
 
 # PART 2: PRODUCT-SPECIFIC INFRASTRUCTURE
 
 This section maps Telnyx + LiveKit to the two products we are building:
+
 1. **ASR Data Capture Platform** — Record phone conversations, transcribe with word-level timestamps, export as training datasets
 2. **Voice Agent Evaluation Platform** — Test voice AI agents with scripted human testers, score agent performance
 
@@ -2462,6 +2537,7 @@ fs.writeFileSync(`recordings/${captureId}-mixed.wav`, Buffer.from(audioBuffer));
 ### Architecture with LiveKit (Recommended for Eval)
 
 LiveKit adds value here because:
+
 - **Agents Framework** can run the evaluation logic in real-time
 - **Room events** let you observe the call without being in it
 - **Track subscriptions** give you separate audio per participant
@@ -2690,19 +2766,21 @@ session.on('transcription', (event) => {
 
 ### When Each Product Uses What
 
-| Component | ASR Capture | Agent Eval | Voice Agent (future) |
-|-----------|:-----------:|:----------:|:-------------------:|
-| **Telnyx PSTN** | Yes | Yes | Yes |
-| **Telnyx Conference** | Yes | Optional | No |
-| **Telnyx Media Stream** | Yes | Optional | Optional |
-| **LiveKit Rooms** | No | Yes | Yes |
-| **LiveKit SIP Bridge** | No | Yes | Yes |
-| **LiveKit Agents** | No | Yes | Yes |
-| **LiveKit Egress** | No | Yes | Yes |
-| **Deepgram STT** | Yes | Yes | Yes |
-| **LLM (Claude/GPT)** | No | Scoring | Yes |
-| **TTS (ElevenLabs)** | No | No | Yes |
-| **Postgres** | Yes | Yes | Yes |
+
+| Component               | ASR Capture | Agent Eval | Voice Agent (future) |
+| ----------------------- | ----------- | ---------- | -------------------- |
+| **Telnyx PSTN**         | Yes         | Yes        | Yes                  |
+| **Telnyx Conference**   | Yes         | Optional   | No                   |
+| **Telnyx Media Stream** | Yes         | Optional   | Optional             |
+| **LiveKit Rooms**       | No          | Yes        | Yes                  |
+| **LiveKit SIP Bridge**  | No          | Yes        | Yes                  |
+| **LiveKit Agents**      | No          | Yes        | Yes                  |
+| **LiveKit Egress**      | No          | Yes        | Yes                  |
+| **Deepgram STT**        | Yes         | Yes        | Yes                  |
+| **LLM (Claude/GPT)**    | No          | Scoring    | Yes                  |
+| **TTS (ElevenLabs)**    | No          | No         | Yes                  |
+| **Postgres**            | Yes         | Yes        | Yes                  |
+
 
 ---
 
@@ -3132,3 +3210,4 @@ PORT=3001
 │                  │ Cost: ~$5/hr                                 │
 └──────────────────┴──────────────────────────────────────────────┘
 ```
+
