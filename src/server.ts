@@ -6,6 +6,9 @@ import {
   EncodedFileType,
   S3Upload,
   WebhookReceiver,
+  AutoTrackEgress,
+  DirectFileOutput,
+  RoomEgress,
 } from "livekit-server-sdk";
 import { roomService, sipClient, egressClient } from "./livekit";
 import * as dbq from "./db/queries";
@@ -167,11 +170,33 @@ app.post("/api/captures/:id/start", async (req, res) => {
   capture.startedAt = new Date().toISOString();
 
   try {
-    // 1. Create LiveKit room
-    await roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 4 });
-    console.log(`[CAPTURE] Room created: ${capture.roomName}`);
+    // 1. Create LiveKit room with auto track egress
+    // This automatically records each participant's audio as a SEPARATE file
+    // → recordings/captureId-caller_a-timestamp.ogg (Phone A only)
+    // → recordings/captureId-caller_b-timestamp.ogg (Phone B only)
+    const s3Config = new S3Upload({
+      accessKey: S3_ACCESS_KEY!,
+      secret: S3_SECRET_KEY!,
+      bucket: S3_BUCKET!,
+      region: S3_REGION || "auto",
+      endpoint: S3_ENDPOINT || "",
+      forcePathStyle: true,
+    });
 
-    // 2. Start room composite egress (audio-only → S3)
+    await roomService.createRoom({
+      name: capture.roomName!,
+      emptyTimeout: 300,
+      maxParticipants: 4,
+      egress: new RoomEgress({
+        tracks: new AutoTrackEgress({
+          filepath: `recordings/${capture.id}-{publisher_identity}-{time}`,
+          output: { case: "s3", value: s3Config },
+        }),
+      }),
+    });
+    console.log(`[CAPTURE] Room created with per-speaker auto-egress: ${capture.roomName}`);
+
+    // 2. Also start room composite egress for a mixed playback file
     const fileOutput = createS3FileOutput(capture.id);
     const egressInfo = await egressClient.startRoomCompositeEgress(
       capture.roomName!,
@@ -179,7 +204,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
       { audioOnly: true },
     );
     capture.egressId = egressInfo.egressId;
-    console.log(`[CAPTURE] Egress started: ${egressInfo.egressId}`);
+    console.log(`[CAPTURE] Mixed egress started: ${egressInfo.egressId}`);
 
     // 3. Dial Phone A
     await sipClient.createSipParticipant(
