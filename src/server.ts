@@ -64,13 +64,33 @@ function createS3FileOutput(captureId: string): EncodedFileOutput {
 
 const app = express();
 
+// Security headers
+import helmet from "helmet";
+app.use(helmet({ contentSecurityPolicy: false })); // CSP off — we serve audio
+
 // CORS
+const ALLOWED_ORIGINS = env.NODE_ENV === "production"
+  ? [process.env.FRONTEND_URL || ""].filter(Boolean)
+  : ["http://localhost:3000", "http://localhost:3001"];
 app.use((_req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  const origin = _req.headers.origin || "";
+  if (env.NODE_ENV !== "production" || ALLOWED_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+  }
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
+  if (_req.method === "OPTIONS") { res.sendStatus(204); return; }
   next();
 });
+
+// Rate limiting
+import rateLimit from "express-rate-limit";
+const apiLimiter = rateLimit({
+  windowMs: 60_000,
+  max: env.NODE_ENV === "production" ? 60 : 1000,
+  message: { error: "Too many requests" },
+});
+app.use("/api/", apiLimiter);
 
 // Parse JSON for all routes except webhook (needs raw body)
 app.use((req, res, next) => {
@@ -503,16 +523,43 @@ app.get("/api/recordings/:filename", (req, res) => {
   res.sendFile(getRecordingPath(filename));
 });
 
-// ── Health ───────────────────────────────────────────────────────────
+// ── Health checks ────────────────────────────────────────────────────
 
+// Liveness — is the process alive?
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", activeCaptures: activeCaptures.size });
+  res.json({ status: "ok", uptime: Math.round(process.uptime()), activeCaptures: activeCaptures.size });
+});
+
+// Readiness — can it serve traffic? (checks DB connectivity)
+app.get("/ready", async (_req, res) => {
+  try {
+    await dbq.listCaptures(); // lightweight DB ping
+    res.json({ status: "ready" });
+  } catch {
+    res.status(503).json({ status: "not ready", reason: "database unreachable" });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════
-// Start
+// Start + Graceful Shutdown
 // ════════════════════════════════════════════════════════════════════
 
-app.listen(Number(PORT), () => {
+const server = app.listen(Number(PORT), () => {
   logger.info({ port: PORT }, "Voice Capture Platform started");
 });
+
+function shutdown(signal: string) {
+  logger.info({ signal }, "Shutting down gracefully...");
+  server.close(() => {
+    logger.info("HTTP server closed");
+    process.exit(0);
+  });
+  // Force exit after 30s if graceful shutdown fails
+  setTimeout(() => {
+    logger.error("Forced shutdown after timeout");
+    process.exit(1);
+  }, 30_000);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
