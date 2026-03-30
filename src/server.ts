@@ -6,9 +6,6 @@ import {
   EncodedFileType,
   S3Upload,
   WebhookReceiver,
-  AutoTrackEgress,
-  DirectFileOutput,
-  RoomEgress,
 } from "livekit-server-sdk";
 import { roomService, sipClient, egressClient } from "./livekit";
 import * as dbq from "./db/queries";
@@ -174,34 +171,9 @@ app.post("/api/captures/:id/start", async (req, res) => {
   capture.startedAt = new Date().toISOString();
 
   try {
-    // 1. Create LiveKit room with auto track egress
-    // This automatically records each participant's audio as a SEPARATE file
-    // → recordings/captureId-caller_a-timestamp.ogg (Phone A only)
-    // → recordings/captureId-caller_b-timestamp.ogg (Phone B only)
-    const s3Config = new S3Upload({
-      accessKey: S3_ACCESS_KEY!,
-      secret: S3_SECRET_KEY!,
-      bucket: S3_BUCKET!,
-      region: S3_REGION || "auto",
-      endpoint: S3_ENDPOINT || "",
-      forcePathStyle: true,
-    });
-
-    await roomService.createRoom({
-      name: capture.roomName!,
-      emptyTimeout: 300,
-      maxParticipants: 4,
-      egress: new RoomEgress({
-        tracks: new AutoTrackEgress({
-          filepath: `recordings/${capture.id}-{publisher_identity}-{time}`,
-          output: { case: "s3", value: s3Config },
-        }),
-      }),
-    });
-    console.log(`[CAPTURE] Room created with per-speaker auto-egress: ${capture.roomName}`);
-
-    // NOTE: Mixed recording egress starts in the webhook when BOTH callers join
-    // This avoids recording silence/ringing before the conversation starts
+    // 1. Create room (no egress yet — recording starts when both callers join via webhook)
+    await roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 4 });
+    console.log(`[CAPTURE] Room created: ${capture.roomName}`);
 
     // 2. Dial Phone A
     await sipClient.createSipParticipant(
@@ -303,20 +275,50 @@ app.post("/livekit/webhook", async (req, res) => {
           const joined = capture._joinedCallers;
           console.log(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
 
-          // Start mixed egress when BOTH callers are in
+          // Both callers joined — start all recordings NOW (no ringing silence)
           if (joined.size >= 2 && !capture.egressId) {
             try {
-              const fileOutput = createS3FileOutput(capture.id);
-              const egressInfo = await egressClient.startRoomCompositeEgress(
+              // Mixed recording (both callers combined)
+              const mixedOutput = createS3FileOutput(capture.id);
+              const mixedEgress = await egressClient.startRoomCompositeEgress(
                 roomName,
-                { file: fileOutput },
+                { file: mixedOutput },
                 { audioOnly: true },
               );
-              capture.egressId = egressInfo.egressId;
+              capture.egressId = mixedEgress.egressId;
               dbq.updateCapture(capture.id, { egressId: capture.egressId });
-              console.log(`[WEBHOOK] Mixed egress started: ${egressInfo.egressId} (both callers in room)`);
+              console.log(`[WEBHOOK] Mixed egress started: ${mixedEgress.egressId}`);
+
+              // Per-speaker recordings (caller_a and caller_b separately)
+              for (const callerId of ["caller_a", "caller_b"]) {
+                try {
+                  const speakerOutput = new EncodedFileOutput({
+                    fileType: EncodedFileType.MP4,
+                    filepath: `recordings/${capture.id}-${callerId}.mp4`,
+                    output: {
+                      case: "s3",
+                      value: new S3Upload({
+                        accessKey: S3_ACCESS_KEY!,
+                        secret: S3_SECRET_KEY!,
+                        bucket: S3_BUCKET!,
+                        region: S3_REGION || "auto",
+                        endpoint: S3_ENDPOINT || "",
+                        forcePathStyle: true,
+                      }),
+                    },
+                  });
+                  await egressClient.startParticipantEgress(
+                    roomName,
+                    callerId,
+                    { file: speakerOutput },
+                  );
+                  console.log(`[WEBHOOK] ${callerId} egress started`);
+                } catch (err: any) {
+                  console.error(`[WEBHOOK] ${callerId} egress failed:`, err.message);
+                }
+              }
             } catch (err: any) {
-              console.error(`[WEBHOOK] Failed to start mixed egress:`, err.message);
+              console.error(`[WEBHOOK] Failed to start egress:`, err.message);
             }
           }
         }
