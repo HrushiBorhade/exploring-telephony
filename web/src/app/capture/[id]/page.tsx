@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import type { Capture } from "@/lib/types";
 
@@ -19,21 +21,111 @@ const statusConfig: Record<string, { label: string; color: string; dot: string }
   completed: { label: "Recording Ready", color: "bg-emerald-900 text-emerald-300", dot: "bg-emerald-400" },
 };
 
+// --- Loading skeleton for the detail page ---
+function DetailSkeleton() {
+  return (
+    <div className="min-h-screen flex flex-col">
+      {/* Header skeleton */}
+      <header className="border-b px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-8 w-14" />
+          <Separator orientation="vertical" className="h-6" />
+          <div className="space-y-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-56" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-5 w-20 rounded-full" />
+          <Skeleton className="h-8 w-24" />
+        </div>
+      </header>
+
+      {/* Body skeleton */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-lg space-y-6">
+          <Card>
+            <CardContent className="py-6 space-y-4">
+              <div className="flex flex-col items-center gap-3">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-3 w-64" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4">
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Error state when capture fails to load ---
+function DetailError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <Card className="max-w-md w-full">
+        <CardContent className="py-12 text-center space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-full bg-destructive/10 flex items-center justify-center">
+            <span className="text-destructive text-xl">!</span>
+          </div>
+          <div>
+            <p className="font-medium">Failed to load capture</p>
+            <p className="text-sm text-muted-foreground mt-1">{message}</p>
+          </div>
+          <div className="flex gap-2 justify-center">
+            <Button variant="outline" onClick={() => window.location.href = "/capture"}>
+              Back to Dashboard
+            </Button>
+            <Button onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function CaptureDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
   const [capture, setCapture] = useState<Capture | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [startingCall, setStartingCall] = useState(false);
+  const [endingCall, setEndingCall] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`${API}/api/captures/${id}`);
-    if (res.ok) {
-      setCapture(await res.json());
+    try {
+      const res = await fetch(`${API}/api/captures/${id}`);
+      if (res.ok) {
+        setCapture(await res.json());
+        setLoadError(null);
+      } else if (res.status === 404) {
+        toast.error("Capture not found");
+        router.push("/capture");
+        return;
+      } else {
+        const errText = await res.text().catch(() => "Unknown error");
+        setLoadError(`Server returned ${res.status}: ${errText}`);
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "Network error — is the API server running?");
+    } finally {
       setLoading(false);
-    } else {
-      toast.error("Capture not found");
-      router.push("/capture");
     }
   }, [id, router]);
 
@@ -45,24 +137,90 @@ export default function CaptureDetailPage() {
   }, [load]);
 
   async function startCall() {
-    const res = await fetch(`${API}/api/captures/${id}/start`, { method: "POST" });
-    if (res.ok) { toast.success("Calling both phones..."); load(); }
-    else toast.error((await res.json()).error || "Failed to start");
+    setStartingCall(true);
+
+    // Optimistic update: immediately show "calling" status
+    setCapture((prev) =>
+      prev ? { ...prev, status: "calling" } : prev
+    );
+
+    try {
+      const res = await fetch(`${API}/api/captures/${id}/start`, { method: "POST" });
+      if (res.ok) {
+        toast.success("Calling both phones...");
+        // Refresh to get server-confirmed state
+        load();
+      } else {
+        // Revert optimistic update on failure
+        const body = await res.json().catch(() => ({ error: "Failed to start call" }));
+        toast.error(body.error || "Failed to start call");
+        setCapture((prev) =>
+          prev ? { ...prev, status: "created" } : prev
+        );
+      }
+    } catch (err) {
+      // Revert optimistic update on network error
+      toast.error(err instanceof Error ? err.message : "Network error — could not start call");
+      setCapture((prev) =>
+        prev ? { ...prev, status: "created" } : prev
+      );
+    } finally {
+      setStartingCall(false);
+    }
   }
 
   async function endCall() {
-    const res = await fetch(`${API}/api/captures/${id}/end`, { method: "POST" });
-    if (res.ok) { toast.info("Call ended. Recording being processed..."); load(); }
-    else toast.error((await res.json()).error || "Failed to end");
+    setEndingCall(true);
+
+    // Save current status for potential revert
+    const previousStatus = capture?.status;
+
+    // Optimistic update: immediately show "ended" status
+    setCapture((prev) =>
+      prev ? { ...prev, status: "ended" } : prev
+    );
+
+    try {
+      const res = await fetch(`${API}/api/captures/${id}/end`, { method: "POST" });
+      if (res.ok) {
+        toast.info("Call ended. Recording being processed...");
+        load();
+      } else {
+        // Revert optimistic update on failure
+        const body = await res.json().catch(() => ({ error: "Failed to end call" }));
+        toast.error(body.error || "Failed to end call");
+        setCapture((prev) =>
+          prev ? { ...prev, status: previousStatus ?? prev.status } : prev
+        );
+      }
+    } catch (err) {
+      // Revert optimistic update on network error
+      toast.error(err instanceof Error ? err.message : "Network error — could not end call");
+      setCapture((prev) =>
+        prev ? { ...prev, status: previousStatus ?? prev.status } : prev
+      );
+    } finally {
+      setEndingCall(false);
+    }
   }
 
-  if (loading || !capture) {
-    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading...</div>;
+  // --- Loading skeleton ---
+  if (loading && !capture) {
+    return <DetailSkeleton />;
+  }
+
+  // --- Error state ---
+  if (loadError && !capture) {
+    return <DetailError message={loadError} onRetry={load} />;
+  }
+
+  if (!capture) {
+    return <DetailSkeleton />;
   }
 
   const cfg = statusConfig[capture.status] ?? statusConfig.created;
   const formatDuration = (s?: number | null) => {
-    if (!s) return "—";
+    if (!s) return "\u2014";
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${String(sec).padStart(2, "0")}`;
@@ -82,6 +240,9 @@ export default function CaptureDetailPage() {
   const callerAAudioUrl = toPublicUrl(capture.recordingUrlA);
   const callerBAudioUrl = toPublicUrl(capture.recordingUrlB);
 
+  // Determine if action buttons should be in progress (either from user action or optimistic state)
+  const isCallActionInProgress = startingCall || endingCall;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -92,7 +253,7 @@ export default function CaptureDetailPage() {
           <div>
             <h1 className="text-sm font-semibold">{capture.name}</h1>
             <p className="text-xs text-muted-foreground font-mono">
-              {capture.phoneA} ↔ {capture.phoneB}
+              {capture.phoneA} &#x2194; {capture.phoneB}
             </p>
           </div>
         </div>
@@ -101,9 +262,38 @@ export default function CaptureDetailPage() {
             <span className={`w-2 h-2 rounded-full mr-1.5 ${cfg.dot}`} />
             {cfg.label}
           </Badge>
-          {capture.status === "created" && <Button size="sm" onClick={startCall}>Start Call</Button>}
+          {capture.status === "created" && (
+            <Button
+              size="sm"
+              onClick={startCall}
+              disabled={startingCall}
+            >
+              {startingCall ? (
+                <>
+                  <LoaderCircle className="size-4 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                "Start Call"
+              )}
+            </Button>
+          )}
           {(capture.status === "calling" || capture.status === "active") && (
-            <Button size="sm" variant="destructive" onClick={endCall}>End Call</Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={endCall}
+              disabled={endingCall || isCallActionInProgress}
+            >
+              {endingCall ? (
+                <>
+                  <LoaderCircle className="size-4 animate-spin" />
+                  Ending...
+                </>
+              ) : (
+                "End Call"
+              )}
+            </Button>
           )}
         </div>
       </header>
@@ -116,7 +306,7 @@ export default function CaptureDetailPage() {
             <CardContent className="py-6 space-y-4">
               <div className="text-center">
                 {capture.status === "created" && (
-                  <p className="text-muted-foreground">Click "Start Call" to bridge both phones and begin recording.</p>
+                  <p className="text-muted-foreground">Click &quot;Start Call&quot; to bridge both phones and begin recording.</p>
                 )}
                 {capture.status === "calling" && (
                   <div className="space-y-2">
@@ -155,7 +345,7 @@ export default function CaptureDetailPage() {
                     {/* Caller A only */}
                     {callerAAudioUrl && (
                       <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-blue-400">Phone A — {capture.phoneA}</p>
+                        <p className="text-xs font-medium text-blue-400">Phone A &#x2014; {capture.phoneA}</p>
                         <audio controls className="w-full" src={callerAAudioUrl} />
                       </div>
                     )}
@@ -163,7 +353,7 @@ export default function CaptureDetailPage() {
                     {/* Caller B only */}
                     {callerBAudioUrl && (
                       <div className="space-y-1.5">
-                        <p className="text-xs font-medium text-orange-400">Phone B — {capture.phoneB}</p>
+                        <p className="text-xs font-medium text-orange-400">Phone B &#x2014; {capture.phoneB}</p>
                         <audio controls className="w-full" src={callerBAudioUrl} />
                       </div>
                     )}
