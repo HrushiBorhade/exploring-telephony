@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,8 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
-import type { Capture } from "@/lib/types";
+import { useCapture, useStartCapture, useEndCapture } from "@/lib/api";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -102,107 +100,13 @@ export default function CaptureDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
-  const [capture, setCapture] = useState<Capture | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [startingCall, setStartingCall] = useState(false);
-  const [endingCall, setEndingCall] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`${API}/api/captures/${id}`);
-      if (res.ok) {
-        setCapture(await res.json());
-        setLoadError(null);
-      } else if (res.status === 404) {
-        toast.error("Capture not found");
-        router.push("/capture");
-        return;
-      } else {
-        const errText = await res.text().catch(() => "Unknown error");
-        setLoadError(`Server returned ${res.status}: ${errText}`);
-      }
-    } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Network error — is the API server running?");
-    } finally {
-      setLoading(false);
-    }
-  }, [id, router]);
+  const { data: capture, isLoading: loading, error: loadError } = useCapture(id);
+  const startMutation = useStartCapture(id);
+  const endMutation = useEndCapture(id);
 
-  // Poll for status updates
-  useEffect(() => {
-    load();
-    const i = setInterval(load, 3000);
-    return () => clearInterval(i);
-  }, [load]);
-
-  async function startCall() {
-    setStartingCall(true);
-
-    // Optimistic update: immediately show "calling" status
-    setCapture((prev) =>
-      prev ? { ...prev, status: "calling" } : prev
-    );
-
-    try {
-      const res = await fetch(`${API}/api/captures/${id}/start`, { method: "POST" });
-      if (res.ok) {
-        toast.success("Calling both phones...");
-        // Refresh to get server-confirmed state
-        load();
-      } else {
-        // Revert optimistic update on failure
-        const body = await res.json().catch(() => ({ error: "Failed to start call" }));
-        toast.error(body.error || "Failed to start call");
-        setCapture((prev) =>
-          prev ? { ...prev, status: "created" } : prev
-        );
-      }
-    } catch (err) {
-      // Revert optimistic update on network error
-      toast.error(err instanceof Error ? err.message : "Network error — could not start call");
-      setCapture((prev) =>
-        prev ? { ...prev, status: "created" } : prev
-      );
-    } finally {
-      setStartingCall(false);
-    }
-  }
-
-  async function endCall() {
-    setEndingCall(true);
-
-    // Save current status for potential revert
-    const previousStatus = capture?.status;
-
-    // Optimistic update: immediately show "ended" status
-    setCapture((prev) =>
-      prev ? { ...prev, status: "ended" } : prev
-    );
-
-    try {
-      const res = await fetch(`${API}/api/captures/${id}/end`, { method: "POST" });
-      if (res.ok) {
-        toast.info("Call ended. Recording being processed...");
-        load();
-      } else {
-        // Revert optimistic update on failure
-        const body = await res.json().catch(() => ({ error: "Failed to end call" }));
-        toast.error(body.error || "Failed to end call");
-        setCapture((prev) =>
-          prev ? { ...prev, status: previousStatus ?? prev.status } : prev
-        );
-      }
-    } catch (err) {
-      // Revert optimistic update on network error
-      toast.error(err instanceof Error ? err.message : "Network error — could not end call");
-      setCapture((prev) =>
-        prev ? { ...prev, status: previousStatus ?? prev.status } : prev
-      );
-    } finally {
-      setEndingCall(false);
-    }
-  }
+  const startingCall = startMutation.isPending;
+  const endingCall = endMutation.isPending;
 
   // --- Loading skeleton ---
   if (loading && !capture) {
@@ -211,7 +115,7 @@ export default function CaptureDetailPage() {
 
   // --- Error state ---
   if (loadError && !capture) {
-    return <DetailError message={loadError} onRetry={load} />;
+    return <DetailError message={loadError.message} onRetry={() => window.location.reload()} />;
   }
 
   if (!capture) {
@@ -265,7 +169,7 @@ export default function CaptureDetailPage() {
           {capture.status === "created" && (
             <Button
               size="sm"
-              onClick={startCall}
+              onClick={() => startMutation.mutate()}
               disabled={startingCall}
             >
               {startingCall ? (
@@ -282,7 +186,7 @@ export default function CaptureDetailPage() {
             <Button
               size="sm"
               variant="destructive"
-              onClick={endCall}
+              onClick={() => endMutation.mutate()}
               disabled={endingCall || isCallActionInProgress}
             >
               {endingCall ? (
