@@ -1,4 +1,8 @@
 import "dotenv/config";
+// Telemetry must be initialized before any other imports
+import { initTelemetry, shutdownTelemetry } from "./telemetry";
+initTelemetry();
+
 import express from "express";
 import crypto from "crypto";
 import { logger } from "./logger";
@@ -12,6 +16,15 @@ import {
 import { roomService, sipClient, egressClient } from "./livekit";
 import * as dbq from "@repo/db";
 import { downloadRecording, getRecordingPath, recordingExists } from "./audio";
+import {
+  registry,
+  captureTotal,
+  captureActiveGauge,
+  callDurationHistogram,
+  egressSuccessTotal,
+  egressFailureTotal,
+  webhookDurationHistogram,
+} from "./metrics";
 import type { Capture } from "@repo/types";
 
 // ════════════════════════════════════════════════════════════════════
@@ -161,6 +174,7 @@ app.post("/api/captures", async (req, res) => {
     roomName,
   });
 
+  captureTotal.inc();
   logger.info(`[CAPTURE] Created: ${id}`);
   res.json(capture);
 });
@@ -211,6 +225,7 @@ app.post("/api/captures/:id/start", async (req, res) => {
     logger.info(`[CAPTURE] Dialing Phone B: ${capture.phoneB}`);
 
     capture.status = "active";
+    captureActiveGauge.inc();
     dbq.updateCapture(capture.id, {
       status: "active",
       startedAt: new Date(capture.startedAt),
@@ -241,6 +256,9 @@ app.post("/api/captures/:id/end", async (req, res) => {
       ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
       : 0;
 
+    captureActiveGauge.dec();
+    if (capture.durationSeconds) callDurationHistogram.observe(capture.durationSeconds);
+
     dbq.updateCapture(capture.id, {
       status: "ended",
       endedAt: new Date(capture.endedAt),
@@ -258,6 +276,7 @@ app.post("/api/captures/:id/end", async (req, res) => {
 // ── LiveKit Webhook — recording completion ──────────────────────────
 
 app.post("/livekit/webhook", async (req, res) => {
+  const webhookStart = Date.now();
   try {
     const body = req.body.toString();
     const authHeader = req.get("Authorization") || "";
@@ -322,13 +341,16 @@ app.post("/livekit/webhook", async (req, res) => {
                     callerId,
                     { file: speakerOutput },
                   );
+                  egressSuccessTotal.inc({ type: callerId });
                   logger.info(`[WEBHOOK] ${callerId} egress started`);
                 } catch (err: any) {
+                  egressFailureTotal.inc();
                   logger.error(`[WEBHOOK] ${callerId} egress failed:`, err.message);
                 }
               }
             } catch (err: any) {
               capture.egressId = undefined; // reset so retry is possible
+              egressFailureTotal.inc();
               logger.error(`[WEBHOOK] Failed to start egress:`, err.message);
             }
           }
@@ -465,6 +487,8 @@ app.post("/livekit/webhook", async (req, res) => {
     }
   } catch (err: any) {
     logger.error("[WEBHOOK] Error:", err.message);
+  } finally {
+    webhookDurationHistogram.observe({ event: "webhook" }, Date.now() - webhookStart);
   }
 
   res.sendStatus(200);
@@ -523,6 +547,13 @@ app.get("/api/recordings/:filename", (req, res) => {
   res.sendFile(getRecordingPath(filename));
 });
 
+// ── Prometheus metrics ───────────────────────────────────────────────
+
+app.get("/metrics", async (_req, res) => {
+  res.set("Content-Type", registry.contentType);
+  res.end(await registry.metrics());
+});
+
 // ── Health checks ────────────────────────────────────────────────────
 
 // Liveness — is the process alive?
@@ -550,7 +581,8 @@ const server = app.listen(Number(PORT), () => {
 
 function shutdown(signal: string) {
   logger.info({ signal }, "Shutting down gracefully...");
-  server.close(() => {
+  server.close(async () => {
+    await shutdownTelemetry();
     logger.info("HTTP server closed");
     process.exit(0);
   });
