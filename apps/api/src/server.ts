@@ -7,6 +7,7 @@ import express from "express";
 import crypto from "crypto";
 import { logger } from "./logger";
 import { env } from "./env";
+import { requireAuth, type AuthRequest } from "./middleware/auth";
 import {
   EncodedFileOutput,
   EncodedFileType,
