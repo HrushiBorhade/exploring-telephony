@@ -54,7 +54,7 @@ export default function LoginPage() {
   }
 
   async function verifyOTP(code: string) {
-    if (code.length !== 6) return;
+    if (code.length !== 6 || loading) return;
     setLoading(true);
     const { error } = await authClient.phoneNumber.verify({ phoneNumber: phone, code });
     setLoading(false);
@@ -107,7 +107,7 @@ export default function LoginPage() {
                   placeholder="+91XXXXXXXXXX"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && sendOTP()}
+                  onKeyDown={(e) => e.key === "Enter" && !loading && sendOTP()}
                   disabled={loading}
                   className="text-center font-mono tracking-widest"
                   autoFocus
