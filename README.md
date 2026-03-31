@@ -49,29 +49,36 @@ cd exploring-telephony
 
 # Install
 npm install
-cd web && npm install && cd ..
-
-# Database
-createdb telephony
-DATABASE_URL=postgresql://$(whoami)@localhost:5432/telephony npx drizzle-kit push
 
 # Configure
 cp .env.example .env
 # Fill in credentials (see .env.example for docs)
 
+# Database
+createdb telephony
+npm run db:push
+
 # Run
-npm run dev:backend   # Terminal 1 — API on :3001
-npm run dev:frontend  # Terminal 2 — UI on :3000
+npm run dev:api   # Terminal 1 — API on :3001
+npm run dev:web   # Terminal 2 — UI on :3000
 ```
 
-### Docker
+### Docker (Development)
+
+No local Postgres needed — Docker spins up everything including migrations.
 
 ```bash
-# Production
-docker compose up -d
+# Start API + Postgres (migrations run automatically on first start)
+docker compose -f docker-compose.dev.yml up -d
 
-# Development (hot reload)
-docker compose -f docker-compose.dev.yml up
+# View logs
+docker compose -f docker-compose.dev.yml logs -f api
+```
+
+### Docker (Production)
+
+```bash
+docker compose up -d
 ```
 
 ## API

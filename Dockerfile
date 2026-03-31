@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/ ./apps/api/
 COPY packages/ ./packages/
+COPY drizzle.config.ts ./
 RUN npm ci --ignore-scripts
 RUN cd apps/api && npx tsc
 
