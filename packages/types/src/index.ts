@@ -1,5 +1,6 @@
 export interface Capture {
   id: string;
+  userId?: string;
   name: string;
   phoneA: string;
   phoneB: string;

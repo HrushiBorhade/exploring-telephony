@@ -19,6 +19,7 @@ export async function listCaptures() {
 }
 
 export async function findCaptureByEgressId(egressId: string) {
+  if (!egressId) return undefined;
   return db.query.captures.findFirst({ where: eq(schema.captures.egressId, egressId) });
 }
 

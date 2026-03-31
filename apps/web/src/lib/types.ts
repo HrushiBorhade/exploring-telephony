@@ -7,6 +7,7 @@ export interface Capture {
   language: string;
   status: "created" | "calling" | "active" | "ended" | "completed";
   roomName?: string;
+  egressId?: string;
   recordingUrl?: string;
   recordingUrlA?: string;
   recordingUrlB?: string;
