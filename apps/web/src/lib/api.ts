@@ -64,7 +64,7 @@ export function useCreateCapture() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { name: string; phoneA: string; phoneB: string; language: string }) =>
+    mutationFn: (data: { name: string; phoneB: string; language: string }) =>
       postJson<Capture>(`${API}/api/captures`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: captureKeys.all });

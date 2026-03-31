@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useCaptures, useCreateCapture } from "@/lib/api";
+import { signOut } from "@/lib/auth-client";
 
 const statusConfig: Record<string, { label: string; className: string; dot: string; pulse?: boolean }> = {
   created:   { label: "Created",   className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
@@ -74,7 +75,6 @@ export default function CaptureDashboard() {
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [phoneA, setPhoneA] = useState("");
   const [phoneB, setPhoneB] = useState("");
   const [language, setLanguage] = useState("en");
 
@@ -84,10 +84,10 @@ export default function CaptureDashboard() {
   const completedCount = captures.filter((c) => c.status === "completed").length;
 
   async function create() {
-    const result = await createMutation.mutateAsync({ name, phoneA, phoneB, language });
+    const result = await createMutation.mutateAsync({ name, phoneB, language });
     toast.success("Capture created");
     setOpen(false);
-    setName(""); setPhoneA(""); setPhoneB(""); setLanguage("en");
+    setName(""); setPhoneB(""); setLanguage("en");
     router.push(`/capture/${result.id}`);
   }
 
@@ -112,7 +112,18 @@ export default function CaptureDashboard() {
             </p>
           )}
         </div>
-        <Button onClick={() => setOpen(true)}>New Capture</Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              signOut().then(() => { window.location.href = "/login"; })
+            }
+          >
+            Sign out
+          </Button>
+          <Button onClick={() => setOpen(true)}>New Capture</Button>
+        </div>
       </div>
 
       {/* Table — border-only container, no background color difference */}
@@ -202,15 +213,6 @@ export default function CaptureDashboard() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Phone A</label>
-              <Input
-                placeholder="+91XXXXXXXXXX"
-                value={phoneA}
-                onChange={(e) => setPhoneA(e.target.value)}
-                disabled={creating}
-              />
-            </div>
-            <div className="space-y-1.5">
               <label className="text-sm font-medium">Phone B</label>
               <Input
                 placeholder="+91XXXXXXXXXX"
@@ -239,7 +241,7 @@ export default function CaptureDashboard() {
             <Button
               className="w-full"
               onClick={create}
-              disabled={!phoneA || !phoneB || creating}
+              disabled={!phoneB || creating}
             >
               {creating ? (
                 <>
