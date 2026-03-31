@@ -9,8 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@repo/types": "*",
-    "@repo/db": "*",
+    "@repo/db": "workspace:*",
+    "@repo/types": "workspace:*",
+    "cookie-parser": "^1.4.7",
     "dotenv": "*",
     "express": "*",
     "express-rate-limit": "*",
@@ -21,6 +22,7 @@
     "zod": "*"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "*",
     "@types/node": "*",
     "tsx": "*",
