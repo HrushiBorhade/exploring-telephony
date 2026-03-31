@@ -189,56 +189,80 @@ app.post("/api/captures/:id/start", async (req, res) => {
   }
 
   capture.status = "calling";
-  capture.startedAt = new Date().toISOString();
+  // startedAt is intentionally NOT set here — it marks when both callers answer,
+  // so durationSeconds reflects actual connected time, not ringing time.
 
   try {
-    // 1. Create room (no egress yet — recording starts when both callers join via webhook)
+    // 1. Create room — egress starts via webhook only after both callers answer
     await roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 4 });
     logger.info(`[CAPTURE] Room created: ${capture.roomName}`);
 
-    // 2. Dial Phone A
-    await sipClient.createSipParticipant(
-      LIVEKIT_SIP_TRUNK_ID!,
-      capture.phoneA,
-      capture.roomName!,
-      {
-        participantIdentity: "caller_a",
-        participantName: "Phone A",
-        krispEnabled: true,
-      },
-    );
-    logger.info(`[CAPTURE] Dialing Phone A: ${capture.phoneA}`);
-
-    // 4. Stagger + Dial Phone B
-    await new Promise((r) => setTimeout(r, 2000));
-
-    await sipClient.createSipParticipant(
-      LIVEKIT_SIP_TRUNK_ID!,
-      capture.phoneB,
-      capture.roomName!,
-      {
-        participantIdentity: "caller_b",
-        participantName: "Phone B",
-        krispEnabled: true,
-      },
-    );
-    logger.info(`[CAPTURE] Dialing Phone B: ${capture.phoneB}`);
-
-    capture.status = "active";
-    captureActiveGauge.inc();
-    dbq.updateCapture(capture.id, {
-      status: "active",
-      startedAt: new Date(capture.startedAt),
-      egressId: capture.egressId,
-    });
-
-    res.json({ roomName: capture.roomName, egressId: capture.egressId });
+    dbq.updateCapture(capture.id, { status: "calling" });
   } catch (err: any) {
     capture.status = "created";
-    capture.startedAt = undefined;
-    logger.error("[CAPTURE] Start failed:", err.message);
+    logger.error("[CAPTURE] Room creation failed:", err.message);
     res.status(500).json({ error: err.message });
+    return;
   }
+
+  // Return immediately — dialing is async. Status updates come via webhook.
+  res.json({ status: "calling", roomName: capture.roomName });
+
+  // 2. Dial both phones in background with waitUntilAnswered — participant_joined
+  // only fires after the human picks up, so egress won't start on a dead ring.
+  (async () => {
+    try {
+      await sipClient.createSipParticipant(
+        LIVEKIT_SIP_TRUNK_ID!,
+        capture.phoneA,
+        capture.roomName!,
+        {
+          participantIdentity: "caller_a",
+          participantName: "Phone A",
+          krispEnabled: true,
+          waitUntilAnswered: true,
+        },
+      );
+      logger.info(`[CAPTURE] Phone A answered: ${capture.phoneA}`);
+
+      // Small stagger so both legs don't hit egress start simultaneously
+      await new Promise((r) => setTimeout(r, 500));
+
+      await sipClient.createSipParticipant(
+        LIVEKIT_SIP_TRUNK_ID!,
+        capture.phoneB,
+        capture.roomName!,
+        {
+          participantIdentity: "caller_b",
+          participantName: "Phone B",
+          krispEnabled: true,
+          waitUntilAnswered: true,
+        },
+      );
+      logger.info(`[CAPTURE] Phone B answered: ${capture.phoneB}`);
+
+      // Both answered — start the clock now (excludes ringing time)
+      capture.startedAt = new Date().toISOString();
+      capture.status = "active";
+      captureActiveGauge.inc();
+      dbq.updateCapture(capture.id, {
+        status: "active",
+        startedAt: new Date(capture.startedAt),
+      });
+    } catch (err: any) {
+      // One or both callers didn't answer — clean up
+      logger.error("[CAPTURE] Dialing failed:", err.message);
+      capture.status = "ended";
+      capture.endedAt = new Date().toISOString();
+      capture.durationSeconds = 0;
+      dbq.updateCapture(capture.id, {
+        status: "ended",
+        endedAt: new Date(capture.endedAt),
+        durationSeconds: 0,
+      });
+      roomService.deleteRoom(capture.roomName!).catch(() => {});
+    }
+  })();
 });
 
 // End capture — close room (egress auto-stops, uploads to S3)
