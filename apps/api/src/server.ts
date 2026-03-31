@@ -535,12 +535,19 @@ app.post("/livekit/webhook", async (req, res) => {
 
 // ── Proxy R2 recordings ──────────────────────────────────────────────
 
-app.get("/api/r2/:captureId/:filename", async (req, res) => {
-  const s3Key = `recordings/${req.params.filename}`;
-  const localPath = getRecordingPath(req.params.filename);
+app.get("/api/r2/:captureId/:filename", requireAuth, async (req: AuthRequest, res) => {
+  const { captureId, filename } = req.params as { captureId: string; filename: string };
+  const capture = await dbq.getCapture(captureId);
+  if (!capture || capture.userId !== req.userId) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const s3Key = `recordings/${filename}`;
+  const localPath = getRecordingPath(filename);
 
   // Serve from local cache if already downloaded
-  if (recordingExists(req.params.filename)) {
+  if (recordingExists(filename)) {
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Cache-Control", "public, max-age=86400");
     res.sendFile(localPath);
@@ -565,7 +572,7 @@ app.get("/api/r2/:captureId/:filename", async (req, res) => {
         res.status(404).json({ error: "Recording not found in R2" });
         return;
       }
-      logger.info(`[R2] Downloaded ${req.params.filename}`);
+      logger.info(`[R2] Downloaded ${filename}`);
       res.setHeader("Content-Type", "audio/mpeg");
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.sendFile(localPath);
@@ -575,8 +582,17 @@ app.get("/api/r2/:captureId/:filename", async (req, res) => {
 
 // ── Serve local recordings ──────────────────────────────────────────
 
-app.get("/api/recordings/:filename", (req, res) => {
-  const { filename } = req.params;
+app.get("/api/recordings/:filename", requireAuth, async (req: AuthRequest, res) => {
+  const { filename } = req.params as { filename: string };
+  // Extract captureId from filename pattern: "<captureId>-mixed.ogg" or "<captureId>-caller_a.ogg"
+  const captureId = filename.replace(/-(mixed|caller_a|caller_b)\.[^.]+$/, "");
+  if (captureId !== filename) {
+    const capture = await dbq.getCapture(captureId);
+    if (!capture || capture.userId !== req.userId) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+  }
   if (!recordingExists(filename)) {
     res.status(404).json({ error: "Not found" });
     return;

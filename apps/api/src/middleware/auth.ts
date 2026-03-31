@@ -9,7 +9,7 @@ export interface AuthRequest extends Request {
 function getSessionToken(cookieHeader: string | undefined): string | null {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(
-    /(?:^|;\s*)better-auth\.session_token=([^;]+)/
+    /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/
   );
   return match ? decodeURIComponent(match[1]) : null;
 }
