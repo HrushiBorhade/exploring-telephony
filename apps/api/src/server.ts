@@ -118,36 +118,42 @@ app.use(express.urlencoded({ extended: true }));
 
 // ── API Routes ──────────────────────────────────────────────────────
 
-// List captures
-app.get("/api/captures", async (_req, res) => {
+// List captures — scoped to authenticated user
+app.get("/api/captures", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const rows = await dbq.listCaptures();
-    res.json(rows);
-  } catch (err: any) {
-    logger.error("[API] List captures failed:", err.message);
-    res.status(500).json({ error: "Database error" });
+    const dbCaptures = await dbq.listCapturesByUser(req.userId!);
+    const merged = dbCaptures.map((row) => activeCaptures.get(row.id) ?? row);
+    const inMemoryOnly = Array.from(activeCaptures.values()).filter(
+      (c) => !dbCaptures.find((r) => r.id === c.id) && c.userId === req.userId
+    );
+    res.json([...merged, ...inMemoryOnly]);
+  } catch {
+    res.status(500).json({ error: "Failed to list captures" });
   }
 });
 
 // Get capture — always read from DB for completed/ended captures (has recording URLs)
 // Use in-memory cache only for active calls (faster status updates)
-app.get("/api/captures/:id", async (req, res) => {
-  const cached = activeCaptures.get(req.params.id);
-  if (cached && cached.status !== "completed" && cached.status !== "ended") {
-    res.json(cached);
-    return;
+app.get("/api/captures/:id", requireAuth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+  const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
+  if (!capture) { res.status(404).json({ error: "Not found" }); return; }
+  if (capture.userId && capture.userId !== req.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
   }
-
-  const row = await dbq.getCapture(req.params.id);
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(row);
+  res.json(capture);
 });
 
-// Create capture
-app.post("/api/captures", async (req, res) => {
-  const { name, phoneA, phoneB, language } = req.body;
-  if (!phoneA || !phoneB) {
-    res.status(400).json({ error: "Need phoneA and phoneB" });
+// Create capture — phoneA auto-filled from session, phoneB supplied by user
+app.post("/api/captures", requireAuth, async (req: AuthRequest, res) => {
+  const { name, phoneB, language } = req.body;
+
+  if (!phoneB) {
+    res.status(400).json({ error: "phoneB is required" });
+    return;
+  }
+  if (!req.userPhone) {
+    res.status(400).json({ error: "No phone number on your account" });
     return;
   }
 
@@ -155,8 +161,9 @@ app.post("/api/captures", async (req, res) => {
   const roomName = `capture-${id}`;
   const capture: Capture = {
     id,
-    name: name || "Untitled",
-    phoneA,
+    userId: req.userId!,
+    name: name || "",
+    phoneA: req.userPhone,
     phoneB,
     language: language || "en",
     status: "created",
@@ -167,9 +174,10 @@ app.post("/api/captures", async (req, res) => {
   activeCaptures.set(id, capture);
   await dbq.createCapture({
     id,
+    userId: req.userId!,
     name: capture.name,
-    phoneA,
-    phoneB,
+    phoneA: capture.phoneA,
+    phoneB: capture.phoneB,
     language: capture.language,
     status: "created",
     roomName,
@@ -181,9 +189,12 @@ app.post("/api/captures", async (req, res) => {
 });
 
 // Start capture — create room, start egress, dial both phones
-app.post("/api/captures/:id/start", async (req, res) => {
-  const capture = activeCaptures.get(req.params.id);
+app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) => {
+  const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
+  if (capture.userId && capture.userId !== req.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
   if (capture.status !== "created") {
     res.status(400).json({ error: `Status is ${capture.status}` });
     return;
@@ -267,9 +278,12 @@ app.post("/api/captures/:id/start", async (req, res) => {
 });
 
 // End capture — close room (egress auto-stops, uploads to S3)
-app.post("/api/captures/:id/end", async (req, res) => {
-  const capture = activeCaptures.get(req.params.id);
+app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => {
+  const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
+  if (capture.userId && capture.userId !== req.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
 
   try {
     await roomService.deleteRoom(capture.roomName!);
