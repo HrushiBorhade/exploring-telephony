@@ -1,133 +1,152 @@
-# Voice Capture Platform
+# Voice Agent Platform
 
-Record phone conversations between two numbers with per-speaker audio separation. Built for collecting ASR training datasets.
+**Telephony infrastructure for voice AI agents.** Bridge real phone calls, capture per-speaker audio, and deploy AI agents anywhere — built on LiveKit SIP + Telnyx.
+
+> Currently: production-grade two-party call capture with per-speaker recordings.  
+> Next: drop AI agents directly into phone calls as a first-class participant.
+
+---
+
+## Why this exists
+
+Getting AI agents onto real phone calls is hard. You need:
+- A SIP trunk to reach the PSTN
+- A media server that can bridge calls, record them, and stream audio in real time
+- Per-speaker track isolation so your ASR model isn't fighting mixed audio
+- An egress pipeline that gets recordings into storage without managing infrastructure
+
+LiveKit solves the media layer. Telnyx solves PSTN access. This platform wires them together and adds the application layer on top — auth, capture management, per-speaker recordings, and a dashboard to review everything.
+
+---
+
+## What it does today
+
+```
+Phone A ──┐                    ┌── Cloudflare R2
+          ├── LiveKit Room ────┤   (mixed + per-speaker .ogg)
+Phone B ──┘   (SIP bridge)     └── PostgreSQL
+              │                    (metadata, status)
+              └── Egress
+                  (track recording)
+```
+
+1. Authenticated user creates a capture — enters a second phone number (their own number auto-fills from login)
+2. Backend creates a LiveKit room and dials both numbers via Telnyx SIP trunk
+3. Both parties join and can hear each other
+4. Per-speaker track recording starts immediately
+5. Call ends → recordings upload to Cloudflare R2
+6. Dashboard shows the capture with 3 audio players: mixed, speaker A, speaker B
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Telephony | [LiveKit Cloud](https://cloud.livekit.io) — rooms, SIP bridge, egress |
+| PSTN | [Telnyx](https://portal.telnyx.com) — SIP trunk to phone network |
+| Backend | Express + TypeScript, Drizzle ORM, pino, zod |
+| Frontend | Next.js 16 App Router, shadcn/ui, TanStack Query, Motion |
+| Auth | Better Auth — phone number OTP via Telnyx SMS |
+| Storage | Cloudflare R2 (S3-compatible) |
+| Database | PostgreSQL |
+| Observability | OpenTelemetry traces + Prometheus metrics |
+
+---
+
+## Roadmap
+
+- [x] Two-party call capture with per-speaker audio separation
+- [x] Phone number authentication (OTP via SMS)
+- [x] Per-user capture scoping
+- [ ] Real-time audio streaming to ASR (Whisper / Deepgram)
+- [ ] AI agent as a call participant (inject a bot into any room)
+- [ ] Webhook-triggered outbound calls (deploy agents on demand)
+- [ ] Multi-party rooms (>2 participants)
+- [ ] Transcript viewer with speaker diarization
+- [ ] Bring-your-own SIP trunk (Twilio, Vonage, Plivo)
+
+---
 
 ## Architecture
 
 ```
-Frontend (Next.js)  →  Backend (Express)  →  LiveKit Cloud  →  Telnyx/Plivo (PSTN)
-     :3000                 :3001              SIP Bridge          Phone calls
-                              ↓
-                        PostgreSQL (metadata)
-                        Cloudflare R2 (recordings)
+apps/
+  web/          Next.js 16 — dashboard, auth, capture management
+  api/          Express — LiveKit orchestration, SIP calls, webhooks
+
+packages/
+  db/           Drizzle ORM schema + queries (shared)
+  types/        Shared TypeScript types
 ```
 
-**How it works:**
-1. You enter two phone numbers on the dashboard
-2. Backend creates a LiveKit room + dials both numbers via SIP trunk
-3. Both callers join the room and can hear each other
-4. When both are connected, recording starts (mixed + per-speaker)
-5. Call ends → recordings upload to Cloudflare R2
-6. Dashboard shows 3 audio players: mixed, caller A, caller B
+The frontend proxies all `/api/*` calls to Express via Next.js rewrites, keeping everything on a single origin with no CORS complexity. Session cookies from Better Auth flow through automatically.
 
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Backend | Express + TypeScript, pino logging, zod validation |
-| Frontend | Next.js App Router, shadcn/ui, Tailwind CSS |
-| Telephony | LiveKit Cloud (rooms, SIP bridge, egress) |
-| PSTN | Telnyx (SIP trunk to phone network) |
-| Storage | Cloudflare R2 (S3-compatible, recordings) |
-| Database | PostgreSQL + Drizzle ORM |
-| CI/CD | GitHub Actions, Docker |
+---
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 22+
-- PostgreSQL running locally
-- Accounts: [LiveKit Cloud](https://cloud.livekit.io), [Telnyx](https://portal.telnyx.com), [Cloudflare R2](https://dash.cloudflare.com)
+- Node.js 22+ and pnpm
+- PostgreSQL running locally (`createdb telephony`)
+- [LiveKit Cloud](https://cloud.livekit.io) project with a SIP outbound trunk
+- [Telnyx](https://portal.telnyx.com) account with a phone number and API key
+- [Cloudflare R2](https://dash.cloudflare.com) bucket
 
 ### Setup
 
 ```bash
-# Clone
-git clone https://github.com/HrushiBorhade/exploring-telephony.git
-cd exploring-telephony
-
-# Install
-npm install
-
-# Configure
-cp .env.example .env
-# Fill in credentials (see .env.example for docs)
-
-# Database
-createdb telephony
-npm run db:push
-
-# Run
-npm run dev:api   # Terminal 1 — API on :3001
-npm run dev:web   # Terminal 2 — UI on :3000
+git clone https://github.com/HrushiBorhade/voice-agent-platform.git
+cd voice-agent-platform
+pnpm install
 ```
 
-### Docker (Development)
+**`apps/api/.env`** (copy from `.env.example`):
+```env
+LIVEKIT_URL=wss://your-app.livekit.cloud
+LIVEKIT_API_KEY=...
+LIVEKIT_API_SECRET=...
+LIVEKIT_SIP_TRUNK_ID=ST_...
+S3_ACCESS_KEY=...
+S3_SECRET_KEY=...
+S3_BUCKET=telephony-recordings
+S3_ENDPOINT=https://....r2.cloudflarestorage.com
+DATABASE_URL=postgresql://user@localhost:5432/telephony
+PORT=3001
+```
 
-No local Postgres needed — Docker spins up everything including migrations.
+**`apps/web/.env.local`**:
+```env
+BETTER_AUTH_SECRET=          # openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+DATABASE_URL=postgresql://user@localhost:5432/telephony
+TELNYX_API_KEY=KEY_...       # from portal.telnyx.com → API Keys
+TELNYX_FROM_NUMBER=+1...     # your Telnyx number
+```
+
+### Run
 
 ```bash
-# Start API + Postgres (migrations run automatically on first start)
-docker compose -f docker-compose.dev.yml up -d
+# Apply DB schema
+pnpm --filter @repo/db db:push
 
-# View logs
-docker compose -f docker-compose.dev.yml logs -f api
+# Start both services
+pnpm --filter api dev     # Express on :3001
+pnpm --filter web dev     # Next.js on :3000
 ```
 
-### Docker (Production)
+Open [http://localhost:3000](http://localhost:3000) — you'll be prompted to sign in with your phone number.
 
-```bash
-docker compose up -d
-```
+---
 
-## API
+## LiveKit SIP Setup
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/captures` | List all captures |
-| POST | `/api/captures` | Create a capture |
-| GET | `/api/captures/:id` | Get capture detail |
-| POST | `/api/captures/:id/start` | Start the call |
-| POST | `/api/captures/:id/end` | End the call |
-| GET | `/health` | Liveness check |
-| GET | `/ready` | Readiness check (DB connectivity) |
-| POST | `/livekit/webhook` | LiveKit event receiver |
+You need a Telnyx SIP trunk connected to LiveKit. Follow [LiveKit's Telnyx guide](https://docs.livekit.io/agents/quickstarts/outbound-calls/) then note the trunk ID (`ST_...`) for your env file.
 
-## Environment Variables
+---
 
-See [`.env.example`](.env.example) for all required variables with documentation.
+## Contributing
 
-## Project Structure
-
-```
-src/
-├── server.ts      Express API + LiveKit webhook handler
-├── env.ts         Zod environment validation
-├── logger.ts      Pino structured logging
-├── livekit.ts     LiveKit SDK clients
-├── audio.ts       Recording file management
-├── types.ts       TypeScript types
-└── db/
-    ├── schema.ts  Drizzle ORM schema
-    ├── queries.ts Database operations
-    └── index.ts   DB connection
-
-web/
-├── src/app/
-│   ├── page.tsx              Redirect to /capture
-│   └── capture/
-│       ├── page.tsx          Dashboard (list + create)
-│       ├── error.tsx         Error boundary
-│       └── [id]/
-│           ├── page.tsx      Capture detail (controls + audio)
-│           └── error.tsx     Error boundary
-└── src/components/ui/        shadcn/ui components
-```
-
-## Roadmap
-
-See [PRODUCT_VISION.md](PRODUCT_VISION.md) for the 3-product roadmap:
-1. **ASR Data Capture** (built) — record phone conversations
-2. **Voice Agent Evaluation** (next) — test AI agents with human testers
-3. **Voice AI Agent Builder** (future) — STT → LLM → TTS pipeline
+This is actively being developed toward a general-purpose voice agent deployment platform. Issues and PRs welcome — especially around ASR integration and agent participation patterns.
