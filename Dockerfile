@@ -1,24 +1,37 @@
 # ── Build stage ───────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package.json package-lock.json ./
+
+RUN corepack enable && corepack prepare pnpm@10 --activate
+
+# Copy workspace manifests and lockfile first for layer caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/db/package.json ./packages/db/
+COPY packages/types/package.json ./packages/types/
+
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+# Copy source
 COPY apps/api/ ./apps/api/
 COPY packages/ ./packages/
 COPY drizzle.config.ts ./
-RUN npm ci --ignore-scripts
-RUN cd apps/api && npx tsc
+
+RUN pnpm --filter api exec tsc
 
 # ── Runtime stage ────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
+RUN corepack enable && corepack prepare pnpm@10 --activate
 RUN addgroup -S app && adduser -S app -G app
 
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/db/package.json ./packages/db/
 COPY packages/types/package.json ./packages/types/
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts && pnpm store prune
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/ ./packages/
