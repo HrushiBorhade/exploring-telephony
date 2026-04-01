@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@opentelemetry/sdk-trace-base": "2.6.1",
     "@repo/db": "workspace:*",
     "@repo/types": "workspace:*",
     "dotenv": "*",

@@ -78,6 +78,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@opentelemetry/sdk-trace-base':
+        specifier: 2.6.1
+        version: 2.6.1(@opentelemetry/api@1.9.1)
       '@repo/db':
         specifier: workspace:*
         version: link:../../packages/db
