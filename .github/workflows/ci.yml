@@ -12,27 +12,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: cd apps/api && npx tsc --noEmit
-      - run: cd apps/api && npx tsc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api exec tsc --noEmit
 
   frontend:
     name: Frontend — Typecheck & Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: cd apps/web && npm ci
-      - run: cd apps/web && npx tsc --noEmit
-      - run: cd apps/web && npx next build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter web exec tsc --noEmit
+      - name: Build Next.js
+        run: pnpm --filter web exec next build
+        env:
+          BETTER_AUTH_SECRET: ci-placeholder-secret-not-real
+          BETTER_AUTH_URL: http://localhost:3000
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          DATABASE_URL: postgresql://user@localhost:5432/telephony
+          TELNYX_API_KEY: KEY_placeholder
+          TELNYX_FROM_NUMBER: "+10000000000"
 
   docker:
     name: Docker Build
