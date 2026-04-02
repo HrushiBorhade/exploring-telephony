@@ -327,11 +327,23 @@ app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => 
 
 app.post("/livekit/webhook", async (req, res) => {
   const webhookStart = Date.now();
+  let body: string;
+  let authHeader: string;
+  let event: any;
   try {
-    const body = req.body.toString();
-    const authHeader = req.get("Authorization") || "";
-    const event = await webhookReceiver.receive(body, authHeader);
+    body = req.body.toString();
+    authHeader = req.get("Authorization") || "";
+    event = await webhookReceiver.receive(body, authHeader);
+  } catch (err: any) {
+    logger.error("[WEBHOOK] Signature verification failed:", err.message);
+    res.sendStatus(401);
+    return;
+  }
 
+  // Respond immediately — LiveKit retries if we don't ACK within ~5s
+  res.sendStatus(200);
+
+  try {
     logger.info(`[WEBHOOK] ${event.event}`);
 
     // ── Track which SIP callers are in each room ──────────────────────
@@ -353,18 +365,51 @@ app.post("/livekit/webhook", async (req, res) => {
 
           // Both callers joined — dispatch consent agent, then start recordings
           // Guard: set egressId to PENDING synchronously to prevent race condition
-          if (joined.size >= 2 && !capture.egressId) {
+          if (joined.size >= 2 && !capture.egressId && capture.status !== "ended") {
             capture.egressId = "PENDING";
             try {
-              // Dispatch consent agent — plays announcement to both callers
-              // Non-fatal: if it fails, recording still starts
+              // Dispatch consent agent — plays announcement, waits for DTMF "1" from both
+              let consentGranted = false; // fail-closed: no recording without explicit consent
               try {
                 await agentDispatch.createDispatch(roomName, "consent-agent");
                 logger.info(`[WEBHOOK] Consent agent dispatched to ${roomName}`);
-                // Wait for consent audio to play (~6s for a 5.4s file + buffer)
-                await new Promise((r) => setTimeout(r, 8000));
+
+                // Poll room metadata for consent result (agent sets it)
+                const deadline = Date.now() + 50_000; // 50s: 10s caller sync + 6s audio + 30s DTMF + buffer
+                while (Date.now() < deadline) {
+                  await new Promise((r) => setTimeout(r, 2000));
+                  const rooms = await roomService.listRooms([roomName]);
+                  const meta = rooms[0]?.metadata;
+                  if (meta) {
+                    try {
+                      const parsed = JSON.parse(meta);
+                      if (parsed.consent === true) {
+                        logger.info(`[WEBHOOK] Consent GRANTED for ${roomName}`);
+                        consentGranted = true;
+                        break;
+                      } else if (parsed.consent === false) {
+                        logger.info(`[WEBHOOK] Consent DENIED for ${roomName}`);
+                        consentGranted = false;
+                        break;
+                      }
+                    } catch { /* metadata not JSON yet */ }
+                  }
+                }
               } catch (err: any) {
                 logger.warn(`[WEBHOOK] Consent agent dispatch failed (non-fatal): ${err.message}`);
+              }
+
+              if (!consentGranted) {
+                logger.info(`[WEBHOOK] No consent — ending call ${capture.id}`);
+                capture.egressId = undefined;
+                capture.status = "ended";
+                capture.endedAt = new Date().toISOString();
+                capture.durationSeconds = 0;
+                await dbq.updateCapture(capture.id, {
+                  status: "ended", endedAt: new Date(), durationSeconds: 0,
+                }).catch(() => {});
+                roomService.deleteRoom(roomName).catch(() => {});
+                return;
               }
 
               // Mixed recording (both callers combined)
@@ -557,8 +602,6 @@ app.post("/livekit/webhook", async (req, res) => {
   } finally {
     webhookDurationHistogram.observe({ event: "webhook" }, Date.now() - webhookStart);
   }
-
-  res.sendStatus(200);
 });
 
 // ── Proxy R2 recordings ──────────────────────────────────────────────
