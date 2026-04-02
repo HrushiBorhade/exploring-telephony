@@ -14,7 +14,7 @@ export const captureKeys = {
 // ── Fetchers ────────────────────────────────────────────────────────
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: "include" });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error(body.error || `Request failed: ${res.status}`);
@@ -25,6 +25,7 @@ async function fetchJson<T>(url: string): Promise<T> {
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
+    credentials: "include",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -48,11 +49,16 @@ export function useCapture(id: string) {
   return useQuery({
     queryKey: captureKeys.detail(id),
     queryFn: () => fetchJson<Capture>(`${API}/api/captures/${id}`),
-    // Poll faster when call is active
+    // Poll faster when call is active; keep polling on "completed" until all recordings arrive
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status === "calling" || status === "active" || status === "ended") return 2_000;
-      if (status === "completed") return false; // stop polling
+      const data = query.state.data;
+      if (!data) return 5_000;
+      if (data.status === "calling" || data.status === "active") return 2_000;
+      if (data.status === "ended") return data.startedAt ? 2_000 : false;
+      if (data.status === "completed") {
+        const allReady = data.recordingUrl && data.recordingUrlA && data.recordingUrlB;
+        return allReady ? false : 2_000;
+      }
       return 5_000;
     },
   });

@@ -6,12 +6,21 @@ export interface AuthRequest extends Request {
   userPhone?: string;
 }
 
+/**
+ * Extract the raw session token from the cookie header.
+ * Better Auth signs cookies as "{token}.{signature}" — we need
+ * only the token portion (before the first dot) to query the DB.
+ */
 function getSessionToken(cookieHeader: string | undefined): string | null {
   if (!cookieHeader) return null;
   const match = cookieHeader.match(
     /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=([^;]+)/
   );
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  const raw = decodeURIComponent(match[1]);
+  // Strip the ".signature" suffix that Better Auth appends
+  const dotIdx = raw.indexOf(".");
+  return dotIdx !== -1 ? raw.slice(0, dotIdx) : raw;
 }
 
 export async function requireAuth(

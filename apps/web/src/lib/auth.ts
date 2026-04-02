@@ -6,6 +6,10 @@ import { db } from "@repo/db";
 import { user, session, account, verification } from "@repo/db";
 
 export const auth = betterAuth({
+  trustedOrigins: [
+    process.env.BETTER_AUTH_URL || "http://localhost:3002",
+    "http://localhost:3001",
+  ],
   database: drizzleAdapter(db, {
     provider: "pg",
     schema: { user, session, account, verification },
@@ -13,19 +17,11 @@ export const auth = betterAuth({
   plugins: [
     phoneNumber({
       sendOTP: async ({ phoneNumber: phone, code }) => {
-        // Fire-and-forget — do NOT await to prevent timing leaks
-        fetch("https://api.telnyx.com/v2/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.TELNYX_API_KEY}`,
-          },
-          body: JSON.stringify({
-            from: process.env.TELNYX_FROM_NUMBER,
-            to: phone,
-            text: `Your Voice Capture code: ${code}. Valid for 5 minutes.`,
-          }),
-        }).catch((err) => console.error("[auth] SMS send failed:", err));
+        // DEV MODE: log OTP to console (Telnyx international SMS not yet enabled)
+        console.log(`\n[DEV OTP] ================================`);
+        console.log(`[DEV OTP] Phone : ${phone}`);
+        console.log(`[DEV OTP] Code  : ${code}`);
+        console.log(`[DEV OTP] ================================\n`);
       },
       otpLength: 6,
       expiresIn: 300,
