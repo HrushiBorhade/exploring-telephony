@@ -30,9 +30,11 @@ export default defineAgent({
     let callerIdentity: string | null = null;
     let consented = false;
 
-    // DTMF listener — registered before connect
+    // DTMF listener — registered before connect. Accepts any SIP caller
+    // pressing 1, even if callerIdentity hasn't been set yet (early press)
     (room as any).on("dtmfReceived", (_code: number, digit: string, participant: any) => {
-      if (digit === "1" && participant.identity === callerIdentity) {
+      if (digit === "1" && (participant.identity === "caller_a" || participant.identity === "caller_b")) {
+        callerIdentity = participant.identity;
         consented = true;
         console.log(`[CONSENT] ${callerIdentity} pressed 1`);
       }
