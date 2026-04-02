@@ -1,4 +1,4 @@
-import { eq, and, gt, desc } from "drizzle-orm";
+import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { db } from "./index";
 import * as schema from "./schema";
 
@@ -29,6 +29,15 @@ export async function listCapturesByUser(userId: string) {
     .from(schema.captures)
     .where(eq(schema.captures.userId, userId))
     .orderBy(desc(schema.captures.createdAt));
+}
+
+export async function findCaptureByRoomName(roomName: string) {
+  if (!roomName) return undefined;
+  return db.query.captures.findFirst({ where: eq(schema.captures.roomName, roomName) });
+}
+
+export async function ping() {
+  await db.execute(sql`SELECT 1`);
 }
 
 export async function getSessionByToken(token: string) {

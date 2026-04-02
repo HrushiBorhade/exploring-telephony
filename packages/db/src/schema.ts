@@ -5,6 +5,7 @@ import {
   timestamp,
   varchar,
   integer,
+  index,
 } from "drizzle-orm/pg-core";
 
 // ── Better Auth tables ────────────────────────────────────────────────
@@ -32,7 +33,9 @@ export const session = pgTable("session", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
-});
+}, (t) => [
+  index("session_user_id_idx").on(t.userId),
+]);
 
 export const account = pgTable("account", {
   id: text("id").primaryKey(),
@@ -81,4 +84,8 @@ export const captures = pgTable("captures_v2", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),
-});
+}, (t) => [
+  index("captures_user_id_idx").on(t.userId),
+  index("captures_egress_id_idx").on(t.egressId),
+  index("captures_room_name_idx").on(t.roomName),
+]);
