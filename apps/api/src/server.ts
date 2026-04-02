@@ -53,6 +53,27 @@ const webhookReceiver = new WebhookReceiver(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET
 const activeCaptures = new Map<string, Capture>();
 
 // ════════════════════════════════════════════════════════════════════
+// Webhook-driven consent resolution (replaces polling)
+// ════════════════════════════════════════════════════════════════════
+
+const consentResolvers = new Map<string, (result: boolean) => void>();
+
+function waitForConsent(roomName: string, timeoutMs = 50_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      consentResolvers.delete(roomName);
+      logger.warn({ roomName, timeoutMs }, "[CONSENT] Timed out waiting for consent");
+      resolve(false);
+    }, timeoutMs);
+    consentResolvers.set(roomName, (result) => {
+      clearTimeout(timer);
+      consentResolvers.delete(roomName);
+      resolve(result);
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
 // S3 output helper
 // ════════════════════════════════════════════════════════════════════
 
@@ -283,10 +304,10 @@ app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) =
       await Promise.race([dialBoth, ringTimeout]);
       logger.info(`[CAPTURE] Both phones answered`);
 
-      // Poll consent from both rooms in parallel
+      // Wait for consent from both rooms via webhook (no polling)
       const [consentA, consentB] = await Promise.all([
-        pollConsentMetadata(consentRoomA),
-        pollConsentMetadata(consentRoomB),
+        waitForConsent(consentRoomA),
+        waitForConsent(consentRoomB),
       ]);
 
       if (!consentA || !consentB) {
@@ -332,39 +353,6 @@ app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) =
   })();
 });
 
-/** Poll a room's metadata for consent result */
-async function pollConsentMetadata(roomName: string, timeoutMs = 50_000): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  let consecutiveErrors = 0;
-  while (Date.now() < deadline) {
-    try {
-      const rooms = await roomService.listRooms([roomName]);
-      consecutiveErrors = 0;
-      if (rooms.length === 0) return false; // room deleted — caller hung up
-      const meta = rooms[0]?.metadata;
-      if (meta) {
-        try {
-          const parsed = JSON.parse(meta);
-          if (parsed.consent === true) return true;
-          if (parsed.consent === false) return false;
-        } catch (parseErr: any) {
-          logger.error({ err: parseErr.message, roomName }, "[CONSENT-POLL] Malformed metadata");
-          return false;
-        }
-      }
-    } catch (err: any) {
-      consecutiveErrors++;
-      logger.warn({ err: err.message, roomName, consecutiveErrors }, "[CONSENT-POLL] listRooms failed");
-      if (consecutiveErrors >= 5) {
-        logger.error({ roomName }, "[CONSENT-POLL] Too many failures, aborting");
-        return false;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  logger.warn({ roomName, timeoutMs }, "[CONSENT-POLL] Timed out");
-  return false;
-}
 
 // End capture — close room (egress auto-stops, uploads to S3)
 app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => {
@@ -424,6 +412,23 @@ app.post("/livekit/webhook", async (req, res) => {
 
   try {
     logger.info(`[WEBHOOK] ${event.event}`);
+
+    // ── Consent resolution via webhook (replaces polling) ────────────
+    if (event.event === "room_metadata_changed" && event.room?.name && event.room?.metadata) {
+      const resolver = consentResolvers.get(event.room.name);
+      if (resolver) {
+        try {
+          const parsed = JSON.parse(event.room.metadata);
+          if (parsed.consent === true) {
+            logger.info(`[WEBHOOK] Consent GRANTED for ${event.room.name}`);
+            resolver(true);
+          } else if (parsed.consent === false) {
+            logger.info(`[WEBHOOK] Consent DENIED for ${event.room.name}`);
+            resolver(false);
+          }
+        } catch { /* metadata not consent JSON */ }
+      }
+    }
 
     // ── Track which SIP callers are in each room ──────────────────────
     // LiveKit's numParticipants in webhooks is unreliable (excludes joining/leaving participant)
