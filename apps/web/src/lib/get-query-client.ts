@@ -9,7 +9,6 @@ function makeQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 5_000,
-        refetchInterval: 3_000,
         retry: 2,
         refetchOnWindowFocus: true,
       },

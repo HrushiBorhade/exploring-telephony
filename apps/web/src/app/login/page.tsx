@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Phone, LoaderCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -36,6 +36,7 @@ export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const verifyingRef = useRef(false);
 
   async function sendOTP() {
     if (!phone.startsWith("+") || phone.length < 10) {
@@ -54,16 +55,19 @@ export default function LoginPage() {
   }
 
   async function verifyOTP(code: string) {
-    if (code.length !== 6 || loading) return;
+    if (code.length !== 6 || verifyingRef.current) return;
+    verifyingRef.current = true;
     setLoading(true);
     const { error } = await authClient.phoneNumber.verify({ phoneNumber: phone, code });
     setLoading(false);
     if (error) {
       toast.error(error.message ?? "Invalid code");
       setOtp("");
+      verifyingRef.current = false;
       return;
     }
     router.push("/capture");
+    verifyingRef.current = false;
   }
 
   function handleOTPChange(value: string) {
