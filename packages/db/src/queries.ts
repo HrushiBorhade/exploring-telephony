@@ -1,4 +1,4 @@
-import { eq, and, gt, desc, sql } from "drizzle-orm";
+import { eq, and, gt, desc, sql, inArray } from "drizzle-orm";
 import { db } from "./index";
 import * as schema from "./schema";
 
@@ -38,6 +38,13 @@ export async function findCaptureByRoomName(roomName: string) {
 
 export async function ping() {
   await db.execute(sql`SELECT 1`);
+}
+
+export async function findStaleCaptures() {
+  return db
+    .select()
+    .from(schema.captures)
+    .where(inArray(schema.captures.status, ["calling", "active"]));
 }
 
 export async function getSessionByToken(token: string) {

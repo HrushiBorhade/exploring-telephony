@@ -744,8 +744,20 @@ app.get("/ready", async (_req, res) => {
 // Start + Graceful Shutdown
 // ════════════════════════════════════════════════════════════════════
 
-const server = app.listen(Number(PORT), () => {
+const server = app.listen(Number(PORT), async () => {
   logger.info({ port: PORT }, "Voice Capture Platform started");
+
+  // Reconcile captures orphaned by a previous crash/restart
+  try {
+    const stale = await dbq.findStaleCaptures();
+    for (const c of stale) {
+      await dbq.updateCapture(c.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 });
+      logger.warn({ captureId: c.id, prevStatus: c.status }, "[STARTUP] Marked orphaned capture as ended");
+    }
+    if (stale.length > 0) logger.info(`[STARTUP] Reconciled ${stale.length} orphaned capture(s)`);
+  } catch (err: any) {
+    logger.error("[STARTUP] Reconciliation failed:", err.message);
+  }
 });
 
 function shutdown(signal: string) {
