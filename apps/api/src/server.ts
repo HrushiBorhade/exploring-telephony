@@ -204,88 +204,167 @@ app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) =
   }
 
   capture.status = "calling";
-  // startedAt is intentionally NOT set here — it marks when both callers answer,
-  // so durationSeconds reflects actual connected time, not ringing time.
+
+  const consentRoomA = `consent-${capture.id}-a`;
+  const consentRoomB = `consent-${capture.id}-b`;
 
   try {
-    // 1. Create room — egress starts via webhook only after both callers answer
-    await roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 4 });
-    logger.info(`[CAPTURE] Room created: ${capture.roomName}`);
+    // Create 3 rooms: 2 consent (isolated per-caller) + 1 main (recording)
+    await Promise.all([
+      roomService.createRoom({ name: consentRoomA, emptyTimeout: 120, maxParticipants: 4 }),
+      roomService.createRoom({ name: consentRoomB, emptyTimeout: 120, maxParticipants: 4 }),
+      roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 10 }),
+    ]);
+    logger.info(`[CAPTURE] Rooms created: ${consentRoomA}, ${consentRoomB}, ${capture.roomName}`);
 
-    dbq.updateCapture(capture.id, { status: "calling" });
+    // Dispatch consent agents to each consent room
+    await Promise.all([
+      agentDispatch.createDispatch(consentRoomA, "consent-agent"),
+      agentDispatch.createDispatch(consentRoomB, "consent-agent"),
+    ]);
+    logger.info(`[CAPTURE] Consent agents dispatched`);
+
+    await dbq.updateCapture(capture.id, { status: "calling" });
   } catch (err: any) {
     capture.status = "created";
-    logger.error("[CAPTURE] Room creation failed:", err.message);
+    logger.error("[CAPTURE] Setup failed:", err.message);
+    // Cleanup any rooms that were created
+    roomService.deleteRoom(consentRoomA).catch(() => {});
+    roomService.deleteRoom(consentRoomB).catch(() => {});
+    roomService.deleteRoom(capture.roomName!).catch(() => {});
     res.status(500).json({ error: err.message });
     return;
   }
 
-  // Return immediately — dialing is async. Status updates come via webhook.
   res.json({ status: "calling", roomName: capture.roomName });
 
-  // 2. Dial both phones in background with waitUntilAnswered — participant_joined
-  // only fires after the human picks up, so egress won't start on a dead ring.
+  // Background: dial both phones IN PARALLEL into their consent rooms
+  // Total max wait: 30s for ringing + 35s for consent = ~65s per caller
+  // If either side fails at any point, abort everything immediately
+  // Hard deadline: entire background flow must complete within 90s
+  const bgDeadline = setTimeout(() => {
+    if (capture.status === "calling") {
+      logger.error({ captureId: capture.id }, "[CAPTURE] Background flow timed out (90s)");
+      capture.status = "ended";
+      capture.endedAt = new Date().toISOString();
+      capture.durationSeconds = 0;
+      dbq.updateCapture(capture.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 })
+        .catch((e) => logger.error("[CAPTURE] DB sync failed:", e.message));
+      roomService.deleteRoom(consentRoomA).catch((e) => logger.warn("[CLEANUP]", e.message));
+      roomService.deleteRoom(consentRoomB).catch((e) => logger.warn("[CLEANUP]", e.message));
+      roomService.deleteRoom(capture.roomName!).catch((e) => logger.warn("[CLEANUP]", e.message));
+    }
+  }, 90_000);
+
   (async () => {
+    const cleanupRoom = (name: string) =>
+      roomService.deleteRoom(name).catch((e) => logger.warn({ room: name }, "[CLEANUP] deleteRoom failed:", e.message));
+
+    const cleanup = () => Promise.all([cleanupRoom(consentRoomA), cleanupRoom(consentRoomB), cleanupRoom(capture.roomName!)]);
+
     try {
-      await sipClient.createSipParticipant(
-        LIVEKIT_SIP_TRUNK_ID!,
-        capture.phoneA,
-        capture.roomName!,
-        {
-          participantIdentity: "caller_a",
-          participantName: "Phone A",
-          krispEnabled: true,
-          waitUntilAnswered: true,
-        },
+      // Dial both phones simultaneously — race with a 30s ring timeout
+      const RING_TIMEOUT_MS = 30_000;
+      const ringTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Ring timeout: phones didn't answer within 30s")), RING_TIMEOUT_MS),
       );
-      logger.info(`[CAPTURE] Phone A answered: ${capture.phoneA}`);
 
-      // Small stagger so both legs don't hit egress start simultaneously
-      await new Promise((r) => setTimeout(r, 500));
+      const dialBoth = Promise.all([
+        sipClient.createSipParticipant(LIVEKIT_SIP_TRUNK_ID!, capture.phoneA, consentRoomA, {
+          participantIdentity: "caller_a", participantName: "Phone A",
+          krispEnabled: true, waitUntilAnswered: true,
+        }),
+        sipClient.createSipParticipant(LIVEKIT_SIP_TRUNK_ID!, capture.phoneB, consentRoomB, {
+          participantIdentity: "caller_b", participantName: "Phone B",
+          krispEnabled: true, waitUntilAnswered: true,
+        }),
+      ]);
 
-      await sipClient.createSipParticipant(
-        LIVEKIT_SIP_TRUNK_ID!,
-        capture.phoneB,
-        capture.roomName!,
-        {
-          participantIdentity: "caller_b",
-          participantName: "Phone B",
-          krispEnabled: true,
-          waitUntilAnswered: true,
-        },
-      );
-      logger.info(`[CAPTURE] Phone B answered: ${capture.phoneB}`);
+      await Promise.race([dialBoth, ringTimeout]);
+      logger.info(`[CAPTURE] Both phones answered`);
 
-      // Both answered — start the clock now (excludes ringing time)
+      // Poll consent from both rooms in parallel
+      const [consentA, consentB] = await Promise.all([
+        pollConsentMetadata(consentRoomA),
+        pollConsentMetadata(consentRoomB),
+      ]);
+
+      if (!consentA || !consentB) {
+        logger.info({ consentA, consentB, captureId: capture.id }, "[CAPTURE] Consent denied");
+        throw new Error("Consent denied");
+      }
+
+      logger.info(`[CAPTURE] Both consented — moving to ${capture.roomName}`);
+
+      // Move both callers to main room in parallel
+      await Promise.all([
+        roomService.moveParticipant(consentRoomA, "caller_a", capture.roomName!),
+        roomService.moveParticipant(consentRoomB, "caller_b", capture.roomName!),
+      ]);
+
       capture.startedAt = new Date().toISOString();
       capture.status = "active";
       captureActiveGauge.inc();
-      dbq.updateCapture(capture.id, {
+      await dbq.updateCapture(capture.id, {
         status: "active",
         startedAt: new Date(capture.startedAt),
       });
-    } catch (err: any) {
-      // Extract SIP status code from TwirpError metadata (per LiveKit docs)
-      const sipCode = err instanceof TwirpError ? err.metadata?.["sip_status_code"] : undefined;
-      const reason = sipCode
-        ? `SIP ${sipCode}: ${err.message}`
-        : err.message || "Unknown error";
+      logger.info(`[CAPTURE] Active: ${capture.id}`);
 
-      // 486=Busy, 603=Decline, 408/480=No answer, 5xx=Trunk failure
-      logger.error({ sipCode, reason, captureId: capture.id }, "[CAPTURE] Dialing failed");
+      // Cleanup consent rooms
+      cleanupRoom(consentRoomA);
+      cleanupRoom(consentRoomB);
+
+    } catch (err: any) {
+      const sipCode = err instanceof TwirpError ? err.metadata?.["sip_status_code"] : undefined;
+      logger.error({ sipCode, reason: err.message, captureId: capture.id }, "[CAPTURE] Call failed");
 
       capture.status = "ended";
       capture.endedAt = new Date().toISOString();
       capture.durationSeconds = 0;
       await dbq.updateCapture(capture.id, {
-        status: "ended",
-        endedAt: new Date(capture.endedAt),
-        durationSeconds: 0,
-      }).catch((e) => logger.error("[CAPTURE] DB sync failed:", e.message));
-      roomService.deleteRoom(capture.roomName!).catch(() => {});
+        status: "ended", endedAt: new Date(), durationSeconds: 0,
+      }).catch((e) => logger.error({ captureId: capture.id }, "[DB] Failed to update ended:", e.message));
+      await cleanup();
+    } finally {
+      clearTimeout(bgDeadline);
     }
   })();
 });
+
+/** Poll a room's metadata for consent result */
+async function pollConsentMetadata(roomName: string, timeoutMs = 50_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let consecutiveErrors = 0;
+  while (Date.now() < deadline) {
+    try {
+      const rooms = await roomService.listRooms([roomName]);
+      consecutiveErrors = 0;
+      if (rooms.length === 0) return false; // room deleted — caller hung up
+      const meta = rooms[0]?.metadata;
+      if (meta) {
+        try {
+          const parsed = JSON.parse(meta);
+          if (parsed.consent === true) return true;
+          if (parsed.consent === false) return false;
+        } catch (parseErr: any) {
+          logger.error({ err: parseErr.message, roomName }, "[CONSENT-POLL] Malformed metadata");
+          return false;
+        }
+      }
+    } catch (err: any) {
+      consecutiveErrors++;
+      logger.warn({ err: err.message, roomName, consecutiveErrors }, "[CONSENT-POLL] listRooms failed");
+      if (consecutiveErrors >= 5) {
+        logger.error({ roomName }, "[CONSENT-POLL] Too many failures, aborting");
+        return false;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  logger.warn({ roomName, timeoutMs }, "[CONSENT-POLL] Timed out");
+  return false;
+}
 
 // End capture — close room (egress auto-stops, uploads to S3)
 app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => {
@@ -354,8 +433,8 @@ app.post("/livekit/webhook", async (req, res) => {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
-      // Only track our SIP callers, not egress bots
-      if (identity === "caller_a" || identity === "caller_b") {
+      // Only track SIP callers in the MAIN capture room (not consent rooms)
+      if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
         const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
         if (capture) {
           if (!capture._joinedCallers) capture._joinedCallers = new Set();
@@ -363,55 +442,10 @@ app.post("/livekit/webhook", async (req, res) => {
           const joined = capture._joinedCallers;
           logger.info(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
 
-          // Both callers joined — dispatch consent agent, then start recordings
-          // Guard: set egressId to PENDING synchronously to prevent race condition
+          // Both callers in main room — consent already verified, start recording
           if (joined.size >= 2 && !capture.egressId && capture.status !== "ended") {
             capture.egressId = "PENDING";
             try {
-              // Dispatch consent agent — plays announcement, waits for DTMF "1" from both
-              let consentGranted = false; // fail-closed: no recording without explicit consent
-              try {
-                await agentDispatch.createDispatch(roomName, "consent-agent");
-                logger.info(`[WEBHOOK] Consent agent dispatched to ${roomName}`);
-
-                // Poll room metadata for consent result (agent sets it)
-                const deadline = Date.now() + 50_000; // 50s: 10s caller sync + 6s audio + 30s DTMF + buffer
-                while (Date.now() < deadline) {
-                  await new Promise((r) => setTimeout(r, 2000));
-                  const rooms = await roomService.listRooms([roomName]);
-                  const meta = rooms[0]?.metadata;
-                  if (meta) {
-                    try {
-                      const parsed = JSON.parse(meta);
-                      if (parsed.consent === true) {
-                        logger.info(`[WEBHOOK] Consent GRANTED for ${roomName}`);
-                        consentGranted = true;
-                        break;
-                      } else if (parsed.consent === false) {
-                        logger.info(`[WEBHOOK] Consent DENIED for ${roomName}`);
-                        consentGranted = false;
-                        break;
-                      }
-                    } catch { /* metadata not JSON yet */ }
-                  }
-                }
-              } catch (err: any) {
-                logger.warn(`[WEBHOOK] Consent agent dispatch failed (non-fatal): ${err.message}`);
-              }
-
-              if (!consentGranted) {
-                logger.info(`[WEBHOOK] No consent — ending call ${capture.id}`);
-                capture.egressId = undefined;
-                capture.status = "ended";
-                capture.endedAt = new Date().toISOString();
-                capture.durationSeconds = 0;
-                await dbq.updateCapture(capture.id, {
-                  status: "ended", endedAt: new Date(), durationSeconds: 0,
-                }).catch(() => {});
-                roomService.deleteRoom(roomName).catch(() => {});
-                return;
-              }
-
               // Mixed recording (both callers combined)
               const mixedOutput = createS3FileOutput(capture.id);
               const mixedEgress = await egressClient.startRoomCompositeEgress(
@@ -468,7 +502,7 @@ app.post("/livekit/webhook", async (req, res) => {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
-      if (identity === "caller_a" || identity === "caller_b") {
+      if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
         const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
         if (capture) {
           capture._joinedCallers?.delete(identity);
@@ -502,16 +536,17 @@ app.post("/livekit/webhook", async (req, res) => {
       const roomName = event.room.name;
       const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
       if (capture && capture.status === "active") {
+        captureActiveGauge.dec();
         capture.status = "ended";
         capture.endedAt = new Date().toISOString();
         capture.durationSeconds = capture.startedAt
           ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
           : 0;
-        dbq.updateCapture(capture.id, {
+        await dbq.updateCapture(capture.id, {
           status: "ended",
           endedAt: new Date(capture.endedAt),
           durationSeconds: capture.durationSeconds,
-        });
+        }).catch((e) => logger.error("[DB] room_finished update failed:", e.message));
         logger.info(`[WEBHOOK] Capture ${capture.id} ended (room finished)`);
       }
     }
