@@ -8,17 +8,12 @@ import crypto from "crypto";
 import { logger } from "./logger";
 import { env } from "./env";
 import { requireAuth, type AuthRequest } from "./middleware/auth";
-import {
-  EncodedFileOutput,
-  EncodedFileType,
-  S3Upload,
-  WebhookReceiver,
-  TwirpError,
-  AgentDispatchClient,
-} from "livekit-server-sdk";
-import { roomService, sipClient, egressClient, agentDispatch } from "./livekit";
+import { WebhookReceiver, TwirpError } from "livekit-server-sdk";
+import { roomService, sipClient, egressClient, agentDispatch } from "./lib/livekit";
 import * as dbq from "@repo/db";
-import { downloadRecording, getRecordingPath, recordingExists } from "./audio";
+import { downloadRecording, getRecordingPath, recordingExists } from "./lib/audio";
+import { createS3FileOutput } from "./lib/s3";
+import { calculateDuration, toApiCapture } from "./lib/helpers";
 import {
   registry,
   captureTotal,
@@ -36,7 +31,7 @@ import type { Capture } from "@repo/types";
 
 // All env vars validated by src/env.ts at import time (zod schema)
 const { LIVEKIT_SIP_TRUNK_ID, LIVEKIT_API_KEY, LIVEKIT_API_SECRET,
-  S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET, S3_REGION, S3_ENDPOINT, PORT } = env;
+  S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET, S3_ENDPOINT, PORT } = env;
 
 // Catch unhandled promise rejections
 process.on("unhandledRejection", (reason: any) => {
@@ -73,28 +68,6 @@ function waitForConsent(roomName: string, timeoutMs = 50_000): Promise<boolean> 
   });
 }
 
-// ════════════════════════════════════════════════════════════════════
-// S3 output helper
-// ════════════════════════════════════════════════════════════════════
-
-function createS3Upload(): S3Upload {
-  return new S3Upload({
-    accessKey: S3_ACCESS_KEY!,
-    secret: S3_SECRET_KEY!,
-    bucket: S3_BUCKET!,
-    region: S3_REGION || "auto",
-    endpoint: S3_ENDPOINT || "",
-    forcePathStyle: true,
-  });
-}
-
-function createS3FileOutput(captureId: string, suffix = "mixed"): EncodedFileOutput {
-  return new EncodedFileOutput({
-    fileType: EncodedFileType.MP4,
-    filepath: `recordings/${captureId}-${suffix}.mp4`,
-    output: { case: "s3", value: createS3Upload() },
-  });
-}
 
 // ════════════════════════════════════════════════════════════════════
 // Express app
@@ -141,17 +114,6 @@ app.use((req, res, next) => {
 });
 app.use(express.urlencoded({ extended: true }));
 
-// Calculate call duration from startedAt
-function calculateDuration(startedAt?: string | null): number {
-  if (!startedAt) return 0;
-  return Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
-}
-
-// Strip internal runtime fields before sending to client
-function toApiCapture(c: any) {
-  const { _joinedCallers, _egressStarting, ...safe } = c;
-  return safe;
-}
 
 // ── API Routes ──────────────────────────────────────────────────────
 
