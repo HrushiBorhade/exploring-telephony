@@ -17,4 +17,5 @@ export interface Capture {
   startedAt?: string;
   endedAt?: string;
   _joinedCallers?: Set<string>;
+  _egressStarting?: boolean;
 }

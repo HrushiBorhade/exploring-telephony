@@ -448,9 +448,14 @@ app.post("/livekit/webhook", async (req, res) => {
           logger.info(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
 
           // Both callers in main room — consent already verified, start recording
-          if (joined.size >= 2 && !capture.egressId && capture.status !== "ended") {
+          // Synchronous boolean guard prevents duplicate egress from concurrent webhooks
+          if (joined.size >= 2 && !capture._egressStarting && !capture.egressId && capture.status !== "ended") {
+            capture._egressStarting = true;
             capture.egressId = "PENDING";
             try {
+              // Brief delay to ensure both callers' audio tracks are established
+              await new Promise((r) => setTimeout(r, 1000));
+
               // Mixed recording (both callers combined)
               const mixedOutput = createS3FileOutput(capture.id);
               const mixedEgress = await egressClient.startRoomCompositeEgress(
@@ -493,7 +498,8 @@ app.post("/livekit/webhook", async (req, res) => {
                 }
               }
             } catch (err: any) {
-              capture.egressId = undefined; // reset so retry is possible
+              capture.egressId = undefined;
+              capture._egressStarting = false;
               egressFailureTotal.inc();
               logger.error(`[WEBHOOK] Failed to start egress:`, err.message);
             }
