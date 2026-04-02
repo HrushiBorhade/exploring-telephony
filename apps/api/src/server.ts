@@ -77,21 +77,22 @@ function waitForConsent(roomName: string, timeoutMs = 50_000): Promise<boolean> 
 // S3 output helper
 // ════════════════════════════════════════════════════════════════════
 
-function createS3FileOutput(captureId: string): EncodedFileOutput {
+function createS3Upload(): S3Upload {
+  return new S3Upload({
+    accessKey: S3_ACCESS_KEY!,
+    secret: S3_SECRET_KEY!,
+    bucket: S3_BUCKET!,
+    region: S3_REGION || "auto",
+    endpoint: S3_ENDPOINT || "",
+    forcePathStyle: true,
+  });
+}
+
+function createS3FileOutput(captureId: string, suffix = "mixed"): EncodedFileOutput {
   return new EncodedFileOutput({
     fileType: EncodedFileType.MP4,
-    filepath: `recordings/${captureId}-mixed.mp4`,
-    output: {
-      case: "s3",
-      value: new S3Upload({
-        accessKey: S3_ACCESS_KEY!,
-        secret: S3_SECRET_KEY!,
-        bucket: S3_BUCKET!,
-        region: S3_REGION || "auto",
-        endpoint: S3_ENDPOINT || "",
-        forcePathStyle: true,
-      }),
-    },
+    filepath: `recordings/${captureId}-${suffix}.mp4`,
+    output: { case: "s3", value: createS3Upload() },
   });
 }
 
@@ -140,6 +141,18 @@ app.use((req, res, next) => {
 });
 app.use(express.urlencoded({ extended: true }));
 
+// Calculate call duration from startedAt
+function calculateDuration(startedAt?: string | null): number {
+  if (!startedAt) return 0;
+  return Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
+}
+
+// Strip internal runtime fields before sending to client
+function toApiCapture(c: any) {
+  const { _joinedCallers, _egressStarting, ...safe } = c;
+  return safe;
+}
+
 // ── API Routes ──────────────────────────────────────────────────────
 
 // List captures — scoped to authenticated user
@@ -150,7 +163,7 @@ app.get("/api/captures", requireAuth, async (req: AuthRequest, res) => {
     const inMemoryOnly = Array.from(activeCaptures.values()).filter(
       (c) => !dbCaptures.find((r) => r.id === c.id) && c.userId === req.userId
     );
-    res.json([...merged, ...inMemoryOnly]);
+    res.json([...merged, ...inMemoryOnly].map(toApiCapture));
   } catch {
     res.status(500).json({ error: "Failed to list captures" });
   }
@@ -165,7 +178,7 @@ app.get("/api/captures/:id", requireAuth, async (req: AuthRequest, res) => {
   if (capture.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
-  res.json(capture);
+  res.json(toApiCapture(capture));
 });
 
 // Create capture — phoneA auto-filled from session, phoneB supplied by user
@@ -369,20 +382,17 @@ app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => 
     const wasActive = capture.status === "active";
     capture.status = "ended";
     capture.endedAt = new Date().toISOString();
-    capture.durationSeconds = capture.startedAt
-      ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
-      : 0;
+    capture.durationSeconds = calculateDuration(capture.startedAt);
 
     if (wasActive) captureActiveGauge.dec();
     if (capture.durationSeconds) callDurationHistogram.observe(capture.durationSeconds);
 
-    dbq.updateCapture(capture.id, {
+    await dbq.updateCapture(capture.id, {
       status: "ended",
       endedAt: new Date(capture.endedAt),
       durationSeconds: capture.durationSeconds,
-    });
+    }).catch((e) => logger.error({ captureId: capture.id }, "[DB] /end update failed:", e.message));
 
-    // Recording will arrive via webhook when LiveKit finishes uploading to S3
     res.json({ status: "ended", durationSeconds: capture.durationSeconds });
   } catch (err: any) {
     logger.error("[CAPTURE] End failed:", err.message);
@@ -464,27 +474,14 @@ app.post("/livekit/webhook", async (req, res) => {
                 { audioOnly: true },
               );
               capture.egressId = mixedEgress.egressId;
-              dbq.updateCapture(capture.id, { egressId: capture.egressId });
+              await dbq.updateCapture(capture.id, { egressId: capture.egressId })
+                .catch((e) => logger.error({ captureId: capture.id }, "[DB] egressId update failed:", e.message));
               logger.info(`[WEBHOOK] Mixed egress started: ${mixedEgress.egressId}`);
 
               // Per-speaker recordings (caller_a and caller_b separately)
               for (const callerId of ["caller_a", "caller_b"]) {
                 try {
-                  const speakerOutput = new EncodedFileOutput({
-                    fileType: EncodedFileType.MP4,
-                    filepath: `recordings/${capture.id}-${callerId}.mp4`,
-                    output: {
-                      case: "s3",
-                      value: new S3Upload({
-                        accessKey: S3_ACCESS_KEY!,
-                        secret: S3_SECRET_KEY!,
-                        bucket: S3_BUCKET!,
-                        region: S3_REGION || "auto",
-                        endpoint: S3_ENDPOINT || "",
-                        forcePathStyle: true,
-                      }),
-                    },
-                  });
+                  const speakerOutput = createS3FileOutput(capture.id, callerId);
                   await egressClient.startParticipantEgress(
                     roomName,
                     callerId,
@@ -525,18 +522,16 @@ app.post("/livekit/webhook", async (req, res) => {
             captureActiveGauge.dec();
             capture.status = "ended";
             capture.endedAt = new Date().toISOString();
-            capture.durationSeconds = capture.startedAt
-              ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
-              : 0;
-            dbq.updateCapture(capture.id, {
+            capture.durationSeconds = calculateDuration(capture.startedAt);
+            await dbq.updateCapture(capture.id, {
               status: "ended",
               endedAt: new Date(capture.endedAt),
               durationSeconds: capture.durationSeconds,
-            });
+            }).catch((e) => logger.error({ captureId: capture.id }, "[DB] participant_left update failed:", e.message));
             logger.info(`[WEBHOOK] Capture ${capture.id} ended (all callers left)`);
 
             // Delete the room to trigger egress finalization
-            roomService.deleteRoom(roomName).catch(() => {});
+            roomService.deleteRoom(roomName).catch((e) => logger.warn("[CLEANUP]", e.message));
           }
         }
       }
@@ -588,58 +583,54 @@ app.post("/livekit/webhook", async (req, res) => {
       }
 
       if (row && fileUrl) {
-        // Determine if this is the mixed recording or a per-speaker track
+        // Determine recording type and build atomic update
         const filepath = fileUrl.toLowerCase();
         const isMixed = filepath.includes("-mixed");
         const isCallerA = filepath.includes("-caller_a");
         const isCallerB = filepath.includes("-caller_b");
 
+        // Single atomic DB write per egress — avoids TOCTOU across concurrent handlers
+        const recordingUpdate: Record<string, any> = {};
         if (isMixed) {
-          // Download mixed recording locally
           const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch((err) => {
             logger.error("[WEBHOOK] Download failed:", err.message);
             return null;
           });
-          await dbq.updateCapture(row.id, { recordingUrl: fileUrl, localRecordingPath: localPath });
-          logger.info(`[WEBHOOK] Mixed recording saved for ${row.id}`);
+          recordingUpdate.recordingUrl = fileUrl;
+          recordingUpdate.localRecordingPath = localPath;
         } else if (isCallerA) {
-          await dbq.updateCapture(row.id, { recordingUrlA: fileUrl });
-          logger.info(`[WEBHOOK] Caller A recording saved for ${row.id}`);
+          recordingUpdate.recordingUrlA = fileUrl;
         } else if (isCallerB) {
-          await dbq.updateCapture(row.id, { recordingUrlB: fileUrl });
-          logger.info(`[WEBHOOK] Caller B recording saved for ${row.id}`);
+          recordingUpdate.recordingUrlB = fileUrl;
         } else {
-          // Unknown track — save as mixed
           const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch(() => null);
-          await dbq.updateCapture(row.id, { recordingUrl: fileUrl, localRecordingPath: localPath });
-          logger.info(`[WEBHOOK] Recording saved for ${row.id}`);
+          recordingUpdate.recordingUrl = fileUrl;
+          recordingUpdate.localRecordingPath = localPath;
         }
 
-        // Mark as completed when any recording is ready
-        // (mixed is preferred, but per-speaker tracks also count)
+        // Atomic: set recording URL + mark completed in one DB write
+        recordingUpdate.status = "completed";
+        if (!row.durationSeconds && row.startedAt) {
+          const endTime = row.endedAt ? new Date(row.endedAt).getTime() : Date.now();
+          recordingUpdate.durationSeconds = Math.round((endTime - new Date(row.startedAt).getTime()) / 1000);
+          recordingUpdate.endedAt = row.endedAt ?? new Date();
+        }
+        await dbq.updateCapture(row.id, recordingUpdate);
+        logger.info(`[WEBHOOK] Recording saved for ${row.id} (${isMixed ? "mixed" : isCallerA ? "caller_a" : "caller_b"})`);
+
+        // Update in-memory cache
         const cached = activeCaptures.get(row.id);
-        if (cached && cached.status !== "completed") {
+        if (cached) {
           cached.status = "completed";
           if (isMixed) cached.recordingUrl = fileUrl;
+          if (isCallerA) cached.recordingUrlA = fileUrl;
+          if (isCallerB) cached.recordingUrlB = fileUrl;
         }
 
-        // Check DB — if we have at least one recording URL, mark completed
-        const currentRow = await dbq.getCapture(row.id);
-        if (currentRow && currentRow.status !== "completed") {
-          const hasAnyRecording = currentRow.recordingUrl || currentRow.recordingUrlA || currentRow.recordingUrlB;
-          if (hasAnyRecording) {
-            // Compute duration if not already set (can be missed when call ends via webhook)
-            const updates: Record<string, any> = { status: "completed" };
-            if (!currentRow.durationSeconds && currentRow.startedAt) {
-              const endTime = currentRow.endedAt ? new Date(currentRow.endedAt).getTime() : Date.now();
-              updates.durationSeconds = Math.round((endTime - new Date(currentRow.startedAt).getTime()) / 1000);
-              updates.endedAt = currentRow.endedAt ?? new Date();
-            }
-            await dbq.updateCapture(row.id, updates);
-            // Clean up in-memory cache after a delay (let any in-flight webhooks finish)
-            setTimeout(() => activeCaptures.delete(row.id), 10000);
-            logger.info(`[WEBHOOK] Capture ${row.id} completed (duration: ${updates.durationSeconds ?? 'n/a'}s)`);
-          }
+        // Clean up in-memory cache after a delay
+        if (isMixed) {
+          setTimeout(() => activeCaptures.delete(row.id), 10000);
+          logger.info(`[WEBHOOK] Capture ${row.id} completed (duration: ${recordingUpdate.durationSeconds ?? 'n/a'}s)`);
         }
       }
     }
