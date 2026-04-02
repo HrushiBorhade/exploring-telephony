@@ -14,6 +14,9 @@ import * as dbq from "@repo/db";
 import { downloadRecording, getRecordingPath, recordingExists } from "./lib/audio";
 import { createS3FileOutput } from "./lib/s3";
 import { calculateDuration, toApiCapture } from "./lib/helpers";
+import { setupMiddleware } from "./middleware/setup";
+import { activeCaptures } from "./services/state";
+import { consentResolvers, waitForConsent } from "./services/consent";
 import {
   registry,
   captureTotal,
@@ -41,32 +44,6 @@ process.on("unhandledRejection", (reason: any) => {
 // LiveKit webhook receiver for verifying webhook signatures
 const webhookReceiver = new WebhookReceiver(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!);
 
-// ════════════════════════════════════════════════════════════════════
-// In-memory cache for active captures
-// ════════════════════════════════════════════════════════════════════
-
-const activeCaptures = new Map<string, Capture>();
-
-// ════════════════════════════════════════════════════════════════════
-// Webhook-driven consent resolution (replaces polling)
-// ════════════════════════════════════════════════════════════════════
-
-const consentResolvers = new Map<string, (result: boolean) => void>();
-
-function waitForConsent(roomName: string, timeoutMs = 50_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      consentResolvers.delete(roomName);
-      logger.warn({ roomName, timeoutMs }, "[CONSENT] Timed out waiting for consent");
-      resolve(false);
-    }, timeoutMs);
-    consentResolvers.set(roomName, (result) => {
-      clearTimeout(timer);
-      consentResolvers.delete(roomName);
-      resolve(result);
-    });
-  });
-}
 
 
 // ════════════════════════════════════════════════════════════════════
@@ -74,45 +51,7 @@ function waitForConsent(roomName: string, timeoutMs = 50_000): Promise<boolean> 
 // ════════════════════════════════════════════════════════════════════
 
 const app = express();
-
-// Security headers
-import helmet from "helmet";
-app.use(helmet({ contentSecurityPolicy: false })); // CSP off — we serve audio
-
-// CORS
-const ALLOWED_ORIGINS = env.NODE_ENV === "production"
-  ? [process.env.FRONTEND_URL || ""].filter(Boolean)
-  : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"];
-app.use((_req, res, next) => {
-  const origin = _req.headers.origin || "";
-  if (ALLOWED_ORIGINS.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Access-Control-Allow-Credentials", "true");
-  }
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
-  if (_req.method === "OPTIONS") { res.sendStatus(204); return; }
-  next();
-});
-
-// Rate limiting
-import rateLimit from "express-rate-limit";
-const apiLimiter = rateLimit({
-  windowMs: 60_000,
-  max: env.NODE_ENV === "production" ? 60 : 1000,
-  message: { error: "Too many requests" },
-});
-app.use("/api/", apiLimiter);
-
-// Parse JSON for all routes except webhook (needs raw body)
-app.use((req, res, next) => {
-  if (req.path === "/livekit/webhook") {
-    express.raw({ type: "application/webhook+json" })(req, res, next);
-  } else {
-    express.json()(req, res, next);
-  }
-});
-app.use(express.urlencoded({ extended: true }));
+setupMiddleware(app);
 
 
 // ── API Routes ──────────────────────────────────────────────────────
