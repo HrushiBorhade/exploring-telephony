@@ -19,11 +19,12 @@ const statusConfig: Record<string, { label: string; className: string; dot: stri
   calling:   { label: "Calling",   className: "bg-yellow-950 text-yellow-400 border-yellow-900",    dot: "bg-yellow-400", pulse: true },
   active:    { label: "Live",      className: "bg-emerald-950 text-emerald-400 border-emerald-900", dot: "bg-emerald-400", pulse: true },
   ended:     { label: "Ended",     className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
+  failed:    { label: "Failed",    className: "bg-red-950 text-red-400 border-red-900",             dot: "bg-red-400" },
   completed: { label: "Completed", className: "bg-blue-950 text-blue-400 border-blue-900",          dot: "bg-blue-400" },
 };
 
 function formatDuration(s?: number | null) {
-  if (!s) return "—";
+  if (s == null) return "—";
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, "0")}`;
@@ -84,11 +85,17 @@ export default function CaptureDashboard() {
   const completedCount = captures.filter((c) => c.status === "completed").length;
 
   async function create() {
-    const result = await createMutation.mutateAsync({ name, phoneB, language });
-    toast.success("Capture created");
-    setOpen(false);
-    setName(""); setPhoneB(""); setLanguage("en");
-    router.push(`/capture/${result.id}`);
+    try {
+      const result = await createMutation.mutateAsync({ name, phoneB, language });
+      toast.success("Capture created");
+      setOpen(false);
+      setName("");
+      setPhoneB("");
+      setLanguage("en");
+      router.push(`/capture/${result.id}`);
+    } catch {
+      // onError in useCreateCapture already shows the toast
+    }
   }
 
   return (
@@ -160,7 +167,10 @@ export default function CaptureDashboard() {
               </TableHeader>
               <TableBody>
                 {captures.map((c) => {
-                  const sc = statusConfig[c.status] ?? statusConfig.created;
+                  const callFailed = c.status === "ended" && !c.startedAt;
+                  const sc = callFailed
+                    ? statusConfig.failed
+                    : (statusConfig[c.status] ?? statusConfig.created);
                   return (
                     <TableRow
                       key={c.id}
@@ -204,8 +214,9 @@ export default function CaptureDashboard() {
           </DialogHeader>
           <div className="space-y-4 mt-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Name</label>
+              <label htmlFor="capture-name" className="text-sm font-medium">Name</label>
               <Input
+                id="capture-name"
                 placeholder="e.g. Hindi Customer Call"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -213,8 +224,9 @@ export default function CaptureDashboard() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Phone B</label>
+              <label htmlFor="capture-phone-b" className="text-sm font-medium">Phone B</label>
               <Input
+                id="capture-phone-b"
                 placeholder="+91XXXXXXXXXX"
                 value={phoneB}
                 onChange={(e) => setPhoneB(e.target.value)}
@@ -222,7 +234,7 @@ export default function CaptureDashboard() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Language</label>
+              <label htmlFor="capture-language" className="text-sm font-medium">Language</label>
               <Select value={language} onValueChange={(v) => setLanguage(v ?? "en")} disabled={creating}>
                 <SelectTrigger className="w-full">
                   <SelectValue />

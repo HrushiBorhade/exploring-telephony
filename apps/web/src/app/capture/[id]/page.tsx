@@ -11,7 +11,7 @@ import { WaveformPlayer } from "@/components/waveform-player";
 import { useState } from "react";
 import { useCapture, useStartCapture, useEndCapture } from "@/lib/api";
 
-const R2_PUBLIC = "https://pub-c4f497a2d9354081a36aee5f920fa419.r2.dev";
+const R2_PUBLIC = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://pub-c4f497a2d9354081a36aee5f920fa419.r2.dev";
 
 function toPublicUrl(r2Url?: string | null) {
   if (!r2Url) return null;
@@ -20,7 +20,7 @@ function toPublicUrl(r2Url?: string | null) {
 }
 
 function fmt(s?: number | null) {
-  if (!s) return "—";
+  if (s == null) return "—";
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, "0")}`;
@@ -95,7 +95,11 @@ export default function CaptureDetailPage() {
 
   if (!capture) return <DetailSkeleton />;
 
-  const cfg = statusConfig[capture.status] ?? statusConfig.created;
+  // "ended" with no startedAt means the call never connected (dialing failed)
+  const callFailed = capture.status === "ended" && !capture.startedAt;
+  const cfg = callFailed
+    ? { label: "Call Failed", badgeClass: "bg-red-950 text-red-300 border-red-900", dot: "bg-red-400" }
+    : (statusConfig[capture.status] ?? statusConfig.created);
   const mixedUrl   = toPublicUrl(capture.recordingUrl);
   const callerAUrl = toPublicUrl(capture.recordingUrlA);
   const callerBUrl = toPublicUrl(capture.recordingUrlB);
@@ -201,8 +205,27 @@ export default function CaptureDetailPage() {
               </div>
             )}
 
-            {/* ended / processing */}
-            {capture.status === "ended" && (
+            {/* ended — call failed (never reached active) */}
+            {capture.status === "ended" && !capture.startedAt && (
+              <div className="p-8 text-center space-y-3">
+                <p className="text-xs font-medium text-red-400 uppercase tracking-widest">
+                  Call Failed
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  One or both phones didn&apos;t answer. Check the numbers and try again.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => router.push("/capture")}
+                >
+                  Back to Dashboard
+                </Button>
+              </div>
+            )}
+
+            {/* ended — recording uploading (call was successful) */}
+            {capture.status === "ended" && capture.startedAt && (
               <div className="p-6 space-y-3">
                 <p className="text-center text-xs font-medium text-blue-400 uppercase tracking-widest">
                   Processing
