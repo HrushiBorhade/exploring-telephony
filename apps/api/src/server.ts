@@ -13,8 +13,10 @@ import {
   EncodedFileType,
   S3Upload,
   WebhookReceiver,
+  TwirpError,
+  AgentDispatchClient,
 } from "livekit-server-sdk";
-import { roomService, sipClient, egressClient } from "./livekit";
+import { roomService, sipClient, egressClient, agentDispatch } from "./livekit";
 import * as dbq from "@repo/db";
 import { downloadRecording, getRecordingPath, recordingExists } from "./audio";
 import {
@@ -85,11 +87,12 @@ app.use(helmet({ contentSecurityPolicy: false })); // CSP off — we serve audio
 // CORS
 const ALLOWED_ORIGINS = env.NODE_ENV === "production"
   ? [process.env.FRONTEND_URL || ""].filter(Boolean)
-  : ["http://localhost:3000", "http://localhost:3001"];
+  : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"];
 app.use((_req, res, next) => {
   const origin = _req.headers.origin || "";
-  if (env.NODE_ENV !== "production" || ALLOWED_ORIGINS.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin || "*");
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
   }
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
@@ -138,7 +141,7 @@ app.get("/api/captures/:id", requireAuth, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId && capture.userId !== req.userId) {
+  if (capture.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   res.json(capture);
@@ -192,7 +195,7 @@ app.post("/api/captures", requireAuth, async (req: AuthRequest, res) => {
 app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) => {
   const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId && capture.userId !== req.userId) {
+  if (capture.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   if (capture.status !== "created") {
@@ -262,16 +265,23 @@ app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) =
         startedAt: new Date(capture.startedAt),
       });
     } catch (err: any) {
-      // One or both callers didn't answer — clean up
-      logger.error("[CAPTURE] Dialing failed:", err.message);
+      // Extract SIP status code from TwirpError metadata (per LiveKit docs)
+      const sipCode = err instanceof TwirpError ? err.metadata?.["sip_status_code"] : undefined;
+      const reason = sipCode
+        ? `SIP ${sipCode}: ${err.message}`
+        : err.message || "Unknown error";
+
+      // 486=Busy, 603=Decline, 408/480=No answer, 5xx=Trunk failure
+      logger.error({ sipCode, reason, captureId: capture.id }, "[CAPTURE] Dialing failed");
+
       capture.status = "ended";
       capture.endedAt = new Date().toISOString();
       capture.durationSeconds = 0;
-      dbq.updateCapture(capture.id, {
+      await dbq.updateCapture(capture.id, {
         status: "ended",
         endedAt: new Date(capture.endedAt),
         durationSeconds: 0,
-      });
+      }).catch((e) => logger.error("[CAPTURE] DB sync failed:", e.message));
       roomService.deleteRoom(capture.roomName!).catch(() => {});
     }
   })();
@@ -281,7 +291,7 @@ app.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) =
 app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => {
   const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId && capture.userId !== req.userId) {
+  if (capture.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -289,13 +299,14 @@ app.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => 
     await roomService.deleteRoom(capture.roomName!);
     logger.info(`[CAPTURE] Room deleted: ${capture.roomName}`);
 
+    const wasActive = capture.status === "active";
     capture.status = "ended";
     capture.endedAt = new Date().toISOString();
     capture.durationSeconds = capture.startedAt
       ? Math.round((Date.now() - new Date(capture.startedAt).getTime()) / 1000)
       : 0;
 
-    captureActiveGauge.dec();
+    if (wasActive) captureActiveGauge.dec();
     if (capture.durationSeconds) callDurationHistogram.observe(capture.durationSeconds);
 
     dbq.updateCapture(capture.id, {
@@ -340,12 +351,22 @@ app.post("/livekit/webhook", async (req, res) => {
           const joined = capture._joinedCallers;
           logger.info(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
 
-          // Both callers joined — start all recordings NOW (no ringing silence)
+          // Both callers joined — dispatch consent agent, then start recordings
           // Guard: set egressId to PENDING synchronously to prevent race condition
-          // (two webhooks can fire nearly simultaneously)
           if (joined.size >= 2 && !capture.egressId) {
             capture.egressId = "PENDING";
             try {
+              // Dispatch consent agent — plays announcement to both callers
+              // Non-fatal: if it fails, recording still starts
+              try {
+                await agentDispatch.createDispatch(roomName, "consent-agent");
+                logger.info(`[WEBHOOK] Consent agent dispatched to ${roomName}`);
+                // Wait for consent audio to play (~6s for a 5.4s file + buffer)
+                await new Promise((r) => setTimeout(r, 8000));
+              } catch (err: any) {
+                logger.warn(`[WEBHOOK] Consent agent dispatch failed (non-fatal): ${err.message}`);
+              }
+
               // Mixed recording (both callers combined)
               const mixedOutput = createS3FileOutput(capture.id);
               const mixedEgress = await egressClient.startRoomCompositeEgress(
@@ -411,6 +432,7 @@ app.post("/livekit/webhook", async (req, res) => {
 
           // Only end when ALL SIP callers have left (not when one hangs up)
           if (remaining === 0 && capture.status === "active") {
+            captureActiveGauge.dec();
             capture.status = "ended";
             capture.endedAt = new Date().toISOString();
             capture.durationSeconds = capture.startedAt
@@ -471,8 +493,7 @@ app.post("/livekit/webhook", async (req, res) => {
       let row = await dbq.findCaptureByEgressId(egressId);
       if (!row && roomName) {
         // Track egresses don't have the egressId in our DB — find by room name
-        const captures = await dbq.listCaptures();
-        row = captures.find((c) => c.roomName === roomName) ?? undefined;
+        row = await dbq.findCaptureByRoomName(roomName) ?? undefined;
       }
 
       if (row && fileUrl) {
@@ -516,10 +537,17 @@ app.post("/livekit/webhook", async (req, res) => {
         if (currentRow && currentRow.status !== "completed") {
           const hasAnyRecording = currentRow.recordingUrl || currentRow.recordingUrlA || currentRow.recordingUrlB;
           if (hasAnyRecording) {
-            await dbq.updateCapture(row.id, { status: "completed" });
+            // Compute duration if not already set (can be missed when call ends via webhook)
+            const updates: Record<string, any> = { status: "completed" };
+            if (!currentRow.durationSeconds && currentRow.startedAt) {
+              const endTime = currentRow.endedAt ? new Date(currentRow.endedAt).getTime() : Date.now();
+              updates.durationSeconds = Math.round((endTime - new Date(currentRow.startedAt).getTime()) / 1000);
+              updates.endedAt = currentRow.endedAt ?? new Date();
+            }
+            await dbq.updateCapture(row.id, updates);
             // Clean up in-memory cache after a delay (let any in-flight webhooks finish)
             setTimeout(() => activeCaptures.delete(row.id), 10000);
-            logger.info(`[WEBHOOK] Capture ${row.id} completed`);
+            logger.info(`[WEBHOOK] Capture ${row.id} completed (duration: ${updates.durationSeconds ?? 'n/a'}s)`);
           }
         }
       }
@@ -584,14 +612,17 @@ app.get("/api/r2/:captureId/:filename", requireAuth, async (req: AuthRequest, re
 
 app.get("/api/recordings/:filename", requireAuth, async (req: AuthRequest, res) => {
   const { filename } = req.params as { filename: string };
-  // Extract captureId from filename pattern: "<captureId>-mixed.ogg" or "<captureId>-caller_a.ogg"
-  const captureId = filename.replace(/-(mixed|caller_a|caller_b)\.[^.]+$/, "");
-  if (captureId !== filename) {
-    const capture = await dbq.getCapture(captureId);
-    if (!capture || capture.userId !== req.userId) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
+  // Validate filename matches expected pattern
+  const match = filename.match(/^([a-f0-9]+)-(mixed|caller_a|caller_b)\.[a-z0-9]+$/);
+  if (!match) {
+    res.status(400).json({ error: "Invalid filename" });
+    return;
+  }
+  const captureId = match[1];
+  const capture = await dbq.getCapture(captureId);
+  if (!capture || capture.userId !== req.userId) {
+    res.status(404).json({ error: "Not found" });
+    return;
   }
   if (!recordingExists(filename)) {
     res.status(404).json({ error: "Not found" });
@@ -619,7 +650,7 @@ app.get("/health", (_req, res) => {
 // Readiness — can it serve traffic? (checks DB connectivity)
 app.get("/ready", async (_req, res) => {
   try {
-    await dbq.listCaptures(); // lightweight DB ping
+    await dbq.ping();
     res.json({ status: "ready" });
   } catch {
     res.status(503).json({ status: "not ready", reason: "database unreachable" });
