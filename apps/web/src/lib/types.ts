@@ -12,6 +12,8 @@ export interface Capture {
   recordingUrlA?: string;
   recordingUrlB?: string;
   localRecordingPath?: string;
+  transcriptA?: string | null;
+  transcriptB?: string | null;
   durationSeconds?: number;
   createdAt: string;
   startedAt?: string;

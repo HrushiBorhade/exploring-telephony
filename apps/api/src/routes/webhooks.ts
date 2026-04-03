@@ -5,6 +5,7 @@ import * as dbq from "@repo/db";
 import { downloadRecording } from "../lib/audio";
 import { createS3FileOutput } from "../lib/s3";
 import { calculateDuration } from "../lib/helpers";
+import { transcribeRecording } from "../services/transcription";
 import { logger } from "../logger";
 import { env } from "../env";
 import { activeCaptures } from "../services/state";
@@ -207,8 +208,13 @@ router.post("/livekit/webhook", async (req, res) => {
           recordingUpdate.localRecordingPath = localPath;
         } else if (isCallerA) {
           recordingUpdate.recordingUrlA = fileUrl;
+          // Fire-and-forget transcription — don't block egress flow
+          transcribeRecording(row.id, fileUrl, "a")
+            .catch((e) => logger.error({ captureId: row.id }, "[TRANSCRIBE] caller_a failed:", e.message));
         } else if (isCallerB) {
           recordingUpdate.recordingUrlB = fileUrl;
+          transcribeRecording(row.id, fileUrl, "b")
+            .catch((e) => logger.error({ captureId: row.id }, "[TRANSCRIBE] caller_b failed:", e.message));
         } else {
           const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch(() => null);
           recordingUpdate.recordingUrl = fileUrl;

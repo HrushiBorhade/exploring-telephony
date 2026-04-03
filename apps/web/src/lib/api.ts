@@ -56,8 +56,9 @@ export function useCapture(id: string) {
       if (data.status === "calling" || data.status === "active") return 2_000;
       if (data.status === "ended") return data.startedAt ? 2_000 : false;
       if (data.status === "completed") {
-        const allReady = data.recordingUrl && data.recordingUrlA && data.recordingUrlB;
-        return allReady ? false : 2_000;
+        const allRecordings = data.recordingUrl && data.recordingUrlA && data.recordingUrlB;
+        const allTranscripts = data.transcriptA && data.transcriptB;
+        return (allRecordings && allTranscripts) ? false : 2_000;
       }
       return 5_000;
     },
