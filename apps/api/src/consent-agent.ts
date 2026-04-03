@@ -30,6 +30,7 @@ const { AudioFrame } = require("@livekit/rtc-node") as {
 };
 
 const CONSENT_AUDIO = path.resolve(__dirname, "../assets/consent_48k.wav");
+const WAIT_AUDIO = path.resolve(__dirname, "../assets/wait_48k.wav");
 const SAMPLE_RATE = 48_000;
 const NUM_CHANNELS = 1;
 const SAMPLES_PER_FRAME = SAMPLE_RATE / 10; // 100ms chunks = 4800 samples
@@ -139,6 +140,16 @@ export default defineAgent({
     }
 
     console.log(`[CONSENT] ${room.name}: ${consented ? "GRANTED" : "DENIED"}`);
+
+    // If consented, play "please wait" so the caller isn't sitting in silence
+    if (consented) {
+      const waitHandle = session.say(
+        "Please wait while we connect the other participant.",
+        { audio: wavToAudioFrames(WAIT_AUDIO) },
+      );
+      await waitHandle.waitForPlayout();
+    }
+
     console.log(`[CONSENT] ${room.name}: setting metadata...`);
     await setMetadata(room.name!, consented);
     console.log(`[CONSENT] ${room.name}: metadata SET successfully`);
