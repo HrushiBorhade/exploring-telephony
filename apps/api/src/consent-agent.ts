@@ -6,6 +6,8 @@
  * and sets room metadata. The Express server reads the metadata and
  * moves the participant to the main recording room.
  *
+ * Audio: reads raw PCM from WAV directly — no ffmpeg, no conversion.
+ *
  * Run:  tsx src/consent-agent.ts dev
  */
 import "dotenv/config";
@@ -14,15 +16,68 @@ import {
   WorkerOptions,
   cli,
   defineAgent,
-  audioFramesFromFile,
   voice,
 } from "@livekit/agents";
 import { RoomServiceClient } from "livekit-server-sdk";
+import fs from "node:fs";
 import path from "node:path";
 
-const CONSENT_AUDIO = path.resolve(__dirname, "../assets/consent.wav");
+// @livekit/rtc-node is a transitive dep of @livekit/agents — use runtime require
+// to avoid TS resolution issues without adding it as a direct dependency
+type AudioFrameInstance = { data: Int16Array; sampleRate: number; channels: number; samplesPerChannel: number };
+const { AudioFrame } = require("@livekit/rtc-node") as {
+  AudioFrame: new (data: Int16Array, sampleRate: number, channels: number, samplesPerChannel: number) => AudioFrameInstance;
+};
+
+const CONSENT_AUDIO = path.resolve(__dirname, "../assets/consent_48k.wav");
+const SAMPLE_RATE = 48_000;
+const NUM_CHANNELS = 1;
+const SAMPLES_PER_FRAME = SAMPLE_RATE / 10; // 100ms chunks = 4800 samples
 const DTMF_TIMEOUT_MS = 30_000;
 const CALLER_WAIT_MS = 60_000;
+
+/**
+ * Read a 16-bit PCM WAV file directly into AudioFrame chunks.
+ * Zero ffmpeg. Zero conversion. Just memory copy.
+ */
+function wavToAudioFrames(filePath: string): ReadableStream<any> {
+  const buf = fs.readFileSync(filePath);
+
+  // Parse WAV header — validate format
+  const riff = buf.toString("ascii", 0, 4);
+  const wave = buf.toString("ascii", 8, 12);
+  if (riff !== "RIFF" || wave !== "WAVE") {
+    throw new Error(`Not a WAV file: ${filePath}`);
+  }
+
+  // Find "data" chunk (usually at byte 36, but be safe)
+  let dataOffset = 12;
+  while (dataOffset < buf.length - 8) {
+    const chunkId = buf.toString("ascii", dataOffset, dataOffset + 4);
+    const chunkSize = buf.readUInt32LE(dataOffset + 4);
+    if (chunkId === "data") {
+      dataOffset += 8; // skip "data" + size
+      break;
+    }
+    dataOffset += 8 + chunkSize;
+  }
+
+  // Raw PCM data as Int16Array
+  const pcmBytes = buf.subarray(dataOffset);
+  const samples = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength / 2);
+  const totalSamples = samples.length;
+
+  return new ReadableStream({
+    start(controller) {
+      for (let offset = 0; offset < totalSamples; offset += SAMPLES_PER_FRAME) {
+        const end = Math.min(offset + SAMPLES_PER_FRAME, totalSamples);
+        const chunk = samples.slice(offset, end);
+        controller.enqueue(new AudioFrame(chunk, SAMPLE_RATE, NUM_CHANNELS, chunk.length));
+      }
+      controller.close();
+    },
+  });
+}
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
@@ -69,11 +124,11 @@ export default defineAgent({
       return;
     }
 
-    // Play consent immediately
+    // Play consent immediately — direct PCM, no ffmpeg
     console.log(`[CONSENT] ${callerIdentity} joined — playing consent`);
     const handle = session.say(
       "This call is being recorded for quality and training purposes. Press 1 to consent.",
-      { audio: audioFramesFromFile(CONSENT_AUDIO, { sampleRate: 16000, numChannels: 1 }) },
+      { audio: wavToAudioFrames(CONSENT_AUDIO) },
     );
     await handle.waitForPlayout();
 
@@ -84,7 +139,9 @@ export default defineAgent({
     }
 
     console.log(`[CONSENT] ${room.name}: ${consented ? "GRANTED" : "DENIED"}`);
+    console.log(`[CONSENT] ${room.name}: setting metadata...`);
     await setMetadata(room.name!, consented);
+    console.log(`[CONSENT] ${room.name}: metadata SET successfully`);
     ctx.shutdown();
   },
 });

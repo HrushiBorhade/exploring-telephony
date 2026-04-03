@@ -8,7 +8,7 @@ import { logger } from "../logger";
 import { env } from "../env";
 import { toApiCapture, calculateDuration } from "../lib/helpers";
 import { activeCaptures } from "../services/state";
-import { waitForConsent } from "../services/consent";
+import { waitForConsent, registerConsentPair } from "../services/consent";
 import { captureTotal, captureActiveGauge, callDurationHistogram } from "../metrics";
 import type { Capture } from "@repo/types";
 
@@ -108,6 +108,9 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
       roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 10 }),
     ]);
     logger.info(`[CAPTURE] Rooms created: ${consentRoomA}, ${consentRoomB}, ${capture.roomName}`);
+
+    // Register pair so disconnect in one consent room cancels the other
+    registerConsentPair(capture.id, consentRoomA, consentRoomB);
 
     await Promise.all([
       agentDispatch.createDispatch(consentRoomA, "consent-agent"),

@@ -8,7 +8,7 @@ import { calculateDuration } from "../lib/helpers";
 import { logger } from "../logger";
 import { env } from "../env";
 import { activeCaptures } from "../services/state";
-import { consentResolvers } from "../services/consent";
+import { consentResolvers, cancelConsentPair, consentRoomPairs } from "../services/consent";
 import {
   captureActiveGauge,
   egressSuccessTotal,
@@ -41,6 +41,7 @@ router.post("/livekit/webhook", async (req, res) => {
 
     // ── Consent resolution via webhook ────────────
     if (event.event === "room_metadata_changed" && event.room?.name && event.room?.metadata) {
+      logger.info({ roomName: event.room.name, metadata: event.room.metadata, resolverExists: consentResolvers.has(event.room.name), resolverKeys: Array.from(consentResolvers.keys()) }, "[WEBHOOK] room_metadata_changed DEBUG");
       const resolver = consentResolvers.get(event.room.name);
       if (resolver) {
         try {
@@ -111,6 +112,13 @@ router.post("/livekit/webhook", async (req, res) => {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
+      // ── Consent room: caller left → cancel both consent rooms immediately
+      if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("consent-")) {
+        logger.info(`[WEBHOOK] ${identity} left consent room ${roomName} — cancelling consent pair`);
+        await cancelConsentPair(roomName);
+      }
+
+      // ── Capture room: caller left → remove the other caller immediately
       if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
         const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
         if (capture) {
@@ -118,7 +126,15 @@ router.post("/livekit/webhook", async (req, res) => {
           const remaining = capture._joinedCallers?.size ?? 0;
           logger.info(`[WEBHOOK] ${identity} left ${roomName}. Callers remaining: ${remaining}`);
 
-          if (remaining === 0 && capture.status === "active") {
+          // Immediately disconnect the other caller — don't leave them hanging
+          if (remaining > 0 && capture.status === "active") {
+            const otherCaller = identity === "caller_a" ? "caller_b" : "caller_a";
+            logger.info(`[WEBHOOK] Removing ${otherCaller} from ${roomName} (partner left)`);
+            roomService.removeParticipant(roomName, otherCaller)
+              .catch((e) => logger.warn(`[CLEANUP] removeParticipant ${otherCaller} failed:`, e.message));
+          }
+
+          if (capture.status === "active") {
             captureActiveGauge.dec();
             capture.status = "ended";
             capture.endedAt = new Date().toISOString();
@@ -128,7 +144,7 @@ router.post("/livekit/webhook", async (req, res) => {
               endedAt: new Date(capture.endedAt),
               durationSeconds: capture.durationSeconds,
             }).catch((e) => logger.error({ captureId: capture.id }, "[DB] participant_left update failed:", e.message));
-            logger.info(`[WEBHOOK] Capture ${capture.id} ended (all callers left)`);
+            logger.info(`[WEBHOOK] Capture ${capture.id} ended (caller left)`);
 
             roomService.deleteRoom(roomName).catch((e) => logger.warn("[CLEANUP]", e.message));
           }
