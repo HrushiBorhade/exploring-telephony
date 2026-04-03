@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { WebhookReceiver } from "livekit-server-sdk";
-import { roomService, egressClient, agentDispatch } from "../lib/livekit";
+import { roomService, egressClient } from "../lib/livekit";
 import * as dbq from "@repo/db";
 import { downloadRecording } from "../lib/audio";
 import { createS3FileOutput } from "../lib/s3";
@@ -18,43 +18,6 @@ import {
 
 const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, S3_BUCKET, S3_ENDPOINT } = env;
 const webhookReceiver = new WebhookReceiver(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!);
-
-// Greeting resolvers — same pattern as consent
-const greetingResolvers = new Map<string, (result: boolean) => void>();
-
-function waitForGreeting(roomName: string, timeoutMs = 15_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    let resolved = false;
-    const done = (result: boolean) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timer);
-      clearInterval(poller);
-      greetingResolvers.delete(roomName);
-      resolve(result);
-    };
-
-    const timer = setTimeout(() => {
-      logger.warn({ roomName }, "[GREETING] Timed out — starting egress anyway");
-      done(true);
-    }, timeoutMs);
-
-    // Fast path: webhook resolves instantly
-    greetingResolvers.set(roomName, done);
-
-    // Reliable path: poll metadata every 500ms
-    const poller = setInterval(async () => {
-      try {
-        const rooms = await roomService.listRooms([roomName]);
-        const room = rooms.find((r) => r.name === roomName);
-        if (room?.metadata) {
-          const parsed = JSON.parse(room.metadata);
-          if (parsed.greeting === true) done(true);
-        }
-      } catch { /* will retry */ }
-    }, 500);
-  });
-}
 
 const router = Router();
 
@@ -79,24 +42,19 @@ router.post("/livekit/webhook", async (req, res) => {
     // ── Consent resolution via webhook ────────────
     if (event.event === "room_metadata_changed" && event.room?.name && event.room?.metadata) {
       logger.info({ roomName: event.room.name, metadata: event.room.metadata, resolverExists: consentResolvers.has(event.room.name), resolverKeys: Array.from(consentResolvers.keys()) }, "[WEBHOOK] room_metadata_changed DEBUG");
-      try {
-        const parsed = JSON.parse(event.room.metadata);
-        const roomName = event.room.name;
-
-        // Consent resolution
-        const consentResolver = consentResolvers.get(roomName);
-        if (consentResolver && parsed.consent !== undefined) {
-          logger.info(`[WEBHOOK] Consent ${parsed.consent ? "GRANTED" : "DENIED"} for ${roomName}`);
-          consentResolver(parsed.consent === true);
-        }
-
-        // Greeting resolution
-        const greetingResolver = greetingResolvers.get(roomName);
-        if (greetingResolver && parsed.greeting !== undefined) {
-          logger.info(`[WEBHOOK] Greeting done for ${roomName}`);
-          greetingResolver(true);
-        }
-      } catch { /* metadata not JSON */ }
+      const resolver = consentResolvers.get(event.room.name);
+      if (resolver) {
+        try {
+          const parsed = JSON.parse(event.room.metadata);
+          if (parsed.consent === true) {
+            logger.info(`[WEBHOOK] Consent GRANTED for ${event.room.name}`);
+            resolver(true);
+          } else if (parsed.consent === false) {
+            logger.info(`[WEBHOOK] Consent DENIED for ${event.room.name}`);
+            resolver(false);
+          }
+        } catch { /* metadata not consent JSON */ }
+      }
     }
 
     // ── participant_joined ────────────
@@ -116,15 +74,7 @@ router.post("/livekit/webhook", async (req, res) => {
             capture._egressStarting = true;
             capture.egressId = "PENDING";
             try {
-              // Dispatch greeting agent — plays "Both joined. You may begin."
-              // Egress starts AFTER greeting finishes (greeting not in recording)
-              try {
-                await agentDispatch.createDispatch(roomName, "consent-agent");
-                logger.info(`[WEBHOOK] Greeting agent dispatched to ${roomName}`);
-                await waitForGreeting(roomName);
-              } catch (err: any) {
-                logger.warn(`[WEBHOOK] Greeting dispatch failed (non-fatal): ${err.message}`);
-              }
+              await new Promise((r) => setTimeout(r, 1000));
 
               const mixedOutput = createS3FileOutput(capture.id);
               const mixedEgress = await egressClient.startRoomCompositeEgress(
