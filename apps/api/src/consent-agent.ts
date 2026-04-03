@@ -125,18 +125,28 @@ async function runConsentFlow(ctx: JobContext) {
   }
 
   // Loop "please wait" until caller is moved out (moveParticipant removes them)
+  // Three exit signals: participant leaves (event), session.say throws (catch), hard deadline
   console.log(`[CONSENT] ${room.name}: looping "please wait"`);
-  while (callerInRoom(room)) {
-    try {
-      await session.say("wait", { audio: wavToAudioFrames(WAIT_AUDIO) }).waitForPlayout();
-      // Brief pause between loops so it doesn't sound frantic
-      await new Promise((r) => setTimeout(r, 1000));
-    } catch {
-      // session.say fails when caller leaves — that's our exit signal
-      break;
-    }
-  }
 
+  const callerLeft = new Promise<void>((resolve) => {
+    (room as any).on("participantDisconnected", (p: any) => {
+      if (p.identity === callerIdentity) resolve();
+    });
+  });
+  const hardDeadline = new Promise<void>((resolve) => setTimeout(resolve, 5 * 60_000));
+
+  const audioLoop = (async () => {
+    while (true) {
+      try {
+        await session.say("wait", { audio: wavToAudioFrames(WAIT_AUDIO) }).waitForPlayout();
+        await new Promise((r) => setTimeout(r, 1000));
+      } catch {
+        break;
+      }
+    }
+  })();
+
+  await Promise.race([callerLeft, hardDeadline, audioLoop]);
   console.log(`[CONSENT] ${room.name}: caller moved out, exiting`);
   ctx.shutdown();
 }

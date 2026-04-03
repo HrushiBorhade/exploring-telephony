@@ -24,16 +24,35 @@ const greetingResolvers = new Map<string, (result: boolean) => void>();
 
 function waitForGreeting(roomName: string, timeoutMs = 15_000): Promise<boolean> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      greetingResolvers.delete(roomName);
-      logger.warn({ roomName }, "[GREETING] Timed out — starting egress anyway");
-      resolve(true); // fail-open: greeting is nice-to-have, not blocking
-    }, timeoutMs);
-    greetingResolvers.set(roomName, (result) => {
+    let resolved = false;
+    const done = (result: boolean) => {
+      if (resolved) return;
+      resolved = true;
       clearTimeout(timer);
+      clearInterval(poller);
       greetingResolvers.delete(roomName);
       resolve(result);
-    });
+    };
+
+    const timer = setTimeout(() => {
+      logger.warn({ roomName }, "[GREETING] Timed out — starting egress anyway");
+      done(true);
+    }, timeoutMs);
+
+    // Fast path: webhook resolves instantly
+    greetingResolvers.set(roomName, done);
+
+    // Reliable path: poll metadata every 500ms
+    const poller = setInterval(async () => {
+      try {
+        const rooms = await roomService.listRooms([roomName]);
+        const room = rooms.find((r) => r.name === roomName);
+        if (room?.metadata) {
+          const parsed = JSON.parse(room.metadata);
+          if (parsed.greeting === true) done(true);
+        }
+      } catch { /* will retry */ }
+    }, 500);
   });
 }
 
