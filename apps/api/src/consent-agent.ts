@@ -81,8 +81,6 @@ async function runConsentFlow(ctx: JobContext) {
     }
   });
 
-  await ctx.connect();
-
   const session = new voice.AgentSession({ aecWarmupDuration: 0 });
   await session.start({ agent: new voice.Agent({ instructions: "Play consent." }), room });
   console.log(`[CONSENT] Agent ready in ${room.name}`);
@@ -156,8 +154,6 @@ async function runConsentFlow(ctx: JobContext) {
 async function runGreetingFlow(ctx: JobContext) {
   const room = ctx.room;
 
-  await ctx.connect();
-
   const session = new voice.AgentSession({ aecWarmupDuration: 0 });
   await session.start({ agent: new voice.Agent({ instructions: "Play greeting." }), room });
   console.log(`[GREETING] Agent ready in ${room.name}`);
@@ -175,11 +171,13 @@ async function runGreetingFlow(ctx: JobContext) {
   ctx.shutdown();
 }
 
-// ── Entry point: pick mode based on room name ──────────────────────
+// ── Entry point: connect first, then pick mode based on room name ──
 
 export default defineAgent({
   entry: async (ctx: JobContext) => {
+    await ctx.connect();
     const roomName = ctx.room.name ?? "";
+    console.log(`[AGENT] Room: ${roomName}, mode: ${roomName.startsWith("capture-") ? "greeting" : "consent"}`);
     if (roomName.startsWith("capture-")) {
       await runGreetingFlow(ctx);
     } else {
