@@ -284,13 +284,13 @@ export default function CaptureDetailPage() {
               <div className="px-4 py-3 border-b border-border">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Transcripts</p>
               </div>
-              <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+              <div className="p-4 space-y-4 max-h-[32rem] overflow-y-auto">
                 {[
                   { raw: capture.transcriptA, label: `Phone A — ${capture.phoneA}`, color: "#60a5fa" },
                   { raw: capture.transcriptB, label: `Phone B — ${capture.phoneB}`, color: "#fb923c" },
                 ].map(({ raw, label, color }) => {
                   if (!raw) return null;
-                  const utterances = JSON.parse(raw) as { start: number; end: number; text: string; confidence: number }[];
+                  const utterances = JSON.parse(raw) as { start: number; end: number; text: string; confidence: number; audioUrl?: string }[];
                   if (utterances.length === 0) return null;
                   return (
                     <div key={label} className="space-y-2">
@@ -302,11 +302,23 @@ export default function CaptureDetailPage() {
                           return `${m}:${sec.toFixed(1).padStart(4, "0")}`;
                         };
                         return (
-                          <div key={i} className="flex gap-3 text-sm">
-                            <span className="text-xs font-mono text-muted-foreground shrink-0 w-24 tabular-nums">
-                              {fmtTime(u.start)} → {fmtTime(u.end)}
-                            </span>
-                            <span>{u.text}</span>
+                          <div key={i} className="space-y-1">
+                            <div className="flex gap-3 text-sm items-start">
+                              <span className="text-xs font-mono text-muted-foreground shrink-0 w-24 tabular-nums pt-0.5">
+                                {fmtTime(u.start)} → {fmtTime(u.end)}
+                              </span>
+                              <span className="flex-1">{u.text}</span>
+                              <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                                {(u.confidence * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                            {u.audioUrl && (
+                              <div className="ml-27 pl-27">
+                                <audio controls preload="none" className="h-7 w-full max-w-xs" style={{ marginLeft: "6.5rem" }}>
+                                  <source src={u.audioUrl} type="audio/mp4" />
+                                </audio>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

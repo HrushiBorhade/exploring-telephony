@@ -9,7 +9,7 @@ import { transcribeRecording } from "../services/transcription";
 import { logger } from "../logger";
 import { env } from "../env";
 import { activeCaptures } from "../services/state";
-import { consentResolvers, cancelConsentPair, consentRoomPairs } from "../services/consent";
+import { consentResolvers } from "../services/consent";
 import {
   captureActiveGauge,
   egressSuccessTotal,
@@ -113,12 +113,6 @@ router.post("/livekit/webhook", async (req, res) => {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
-      // ── Consent room: caller left → cancel both consent rooms immediately
-      if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("consent-")) {
-        logger.info(`[WEBHOOK] ${identity} left consent room ${roomName} — cancelling consent pair`);
-        await cancelConsentPair(roomName);
-      }
-
       // ── Capture room: caller left → remove the other caller immediately
       if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
         const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
@@ -185,6 +179,12 @@ router.post("/livekit/webhook", async (req, res) => {
         ? `${S3_ENDPOINT}/${S3_BUCKET}/${rawPath}`
         : rawPath;
 
+      // Convert private R2 URL to public URL for external access (e.g. Deepgram)
+      const publicUrl = fileUrl?.replace(
+        `${S3_ENDPOINT}/${S3_BUCKET}`,
+        `https://pub-c4f497a2d9354081a36aee5f920fa419.r2.dev`,
+      );
+
       logger.info(`[WEBHOOK] Egress complete: ${egressId}, room: ${roomName}, file: ${fileUrl}`);
 
       let row = await dbq.findCaptureByEgressId(egressId);
@@ -204,20 +204,19 @@ router.post("/livekit/webhook", async (req, res) => {
             logger.error("[WEBHOOK] Download failed:", err.message);
             return null;
           });
-          recordingUpdate.recordingUrl = fileUrl;
+          recordingUpdate.recordingUrl = publicUrl;
           recordingUpdate.localRecordingPath = localPath;
         } else if (isCallerA) {
-          recordingUpdate.recordingUrlA = fileUrl;
-          // Fire-and-forget transcription — don't block egress flow
-          transcribeRecording(row.id, fileUrl, "a")
+          recordingUpdate.recordingUrlA = publicUrl;
+          transcribeRecording(row.id, publicUrl!, "a")
             .catch((e) => logger.error({ captureId: row.id }, "[TRANSCRIBE] caller_a failed:", e.message));
         } else if (isCallerB) {
-          recordingUpdate.recordingUrlB = fileUrl;
-          transcribeRecording(row.id, fileUrl, "b")
+          recordingUpdate.recordingUrlB = publicUrl;
+          transcribeRecording(row.id, publicUrl!, "b")
             .catch((e) => logger.error({ captureId: row.id }, "[TRANSCRIBE] caller_b failed:", e.message));
         } else {
           const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch(() => null);
-          recordingUpdate.recordingUrl = fileUrl;
+          recordingUpdate.recordingUrl = publicUrl;
           recordingUpdate.localRecordingPath = localPath;
         }
 
