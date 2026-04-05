@@ -9,3 +9,12 @@ recordings/
 drizzle/
 .playwright-mcp/
 .turbo/
+
+# Terraform
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/*.tfplan
+infra/**/.terraform.lock.hcl
+infra/**/crash.log
+infra/**/*.tfvars.json
