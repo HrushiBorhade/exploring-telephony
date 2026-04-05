@@ -1,14 +1,15 @@
 import { Router } from "express";
+import { writeFile } from "fs/promises";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import * as dbq from "@repo/db";
 import { getRecordingPath, recordingExists } from "../lib/audio";
 import { logger } from "../logger";
 import { env } from "../env";
 
-const { S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET, S3_ENDPOINT } = env;
+const { S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET, S3_REGION, S3_ENDPOINT } = env;
 const router = Router();
 
-// Proxy R2 recordings
+// Proxy S3 recordings — downloads to local cache on first access
 router.get("/api/r2/:captureId/:filename", requireAuth, async (req: AuthRequest, res) => {
   const { captureId, filename } = req.params as { captureId: string; filename: string };
   const capture = await dbq.getCapture(captureId);
@@ -17,7 +18,6 @@ router.get("/api/r2/:captureId/:filename", requireAuth, async (req: AuthRequest,
     return;
   }
 
-  const s3Key = `recordings/${filename}`;
   const localPath = getRecordingPath(filename);
 
   if (recordingExists(filename)) {
@@ -27,29 +27,29 @@ router.get("/api/r2/:captureId/:filename", requireAuth, async (req: AuthRequest,
     return;
   }
 
-  const { execFile } = require("child_process");
-  const execEnv = {
-    ...process.env,
-    AWS_ACCESS_KEY_ID: S3_ACCESS_KEY,
-    AWS_SECRET_ACCESS_KEY: S3_SECRET_KEY,
-  };
+  // Download from S3 using fetch with SigV4-compatible presigned URL approach
+  const s3Key = `recordings/${filename}`;
+  const s3Url = S3_ENDPOINT
+    ? `${S3_ENDPOINT}/${S3_BUCKET}/${s3Key}`
+    : `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${s3Key}`;
 
-  execFile(
-    "aws",
-    ["s3", "cp", `s3://${S3_BUCKET}/${s3Key}`, localPath, "--endpoint-url", S3_ENDPOINT!],
-    { env: execEnv },
-    (err: any) => {
-      if (err) {
-        logger.error("[R2] Download failed:", err.message);
-        res.status(404).json({ error: "Recording not found in R2" });
-        return;
-      }
-      logger.info(`[R2] Downloaded ${filename}`);
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      res.sendFile(localPath);
-    },
-  );
+  try {
+    const response = await fetch(s3Url);
+    if (!response.ok) {
+      logger.error({ status: response.status, key: s3Key }, "[S3] Download failed");
+      res.status(404).json({ error: "Recording not found in S3" });
+      return;
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await writeFile(localPath, buffer);
+    logger.info({ filename, sizeKB: (buffer.length / 1024).toFixed(1) }, "[S3] Downloaded recording");
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.sendFile(localPath);
+  } catch (err: any) {
+    logger.error({ error: err.message, key: s3Key }, "[S3] Download error");
+    res.status(500).json({ error: "Failed to fetch recording" });
+  }
 });
 
 // Serve local recordings

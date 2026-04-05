@@ -22,7 +22,8 @@ export async function downloadRecording(url: string, filename: string): Promise<
   if (!response.ok) throw new Error(`Download failed: ${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
   await writeFile(filePath, buffer);
-  console.log(`[AUDIO] Downloaded ${filename} (${(buffer.length / 1024).toFixed(1)}KB)`);
+  const { logger } = await import("../logger");
+  logger.info({ filename, sizeKB: (buffer.length / 1024).toFixed(1) }, "[AUDIO] Downloaded recording");
   return filePath;
 }
 
