@@ -78,21 +78,23 @@ export function WaveformPlayer({
   return (
     <AudioPlayerProvider>
       <TrackInitializer url={url} onDurationLoaded={onDurationLoaded} />
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-medium" style={{ color: accentColor }}>
-            {label}
-          </p>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyUrl} title="Copy URL">
-              <Copy className="h-3 w-3 text-muted-foreground" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={downloadAudio} title="Download">
-              <Download className="h-3 w-3 text-muted-foreground" />
-            </Button>
+      <div className={label ? "space-y-1.5" : ""}>
+        {label && (
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium truncate" style={{ color: accentColor }}>
+              {label}
+            </p>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyUrl} aria-label="Copy URL">
+                <Copy className="h-3 w-3 text-muted-foreground" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={downloadAudio} aria-label="Download audio">
+                <Download className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-zinc-900/60 px-3 py-2.5">
+        )}
+        <div className={`flex items-center gap-2 sm:gap-3 rounded-lg border border-border/60 bg-zinc-900/60 px-2 sm:px-3 ${label ? "py-2.5" : "py-1.5"}`}>
           <AudioPlayerButton
             item={item}
             variant="ghost"
