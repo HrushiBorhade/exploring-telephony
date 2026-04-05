@@ -2,10 +2,9 @@ import { Router } from "express";
 import { WebhookReceiver } from "livekit-server-sdk";
 import { roomService, egressClient } from "../lib/livekit";
 import * as dbq from "@repo/db";
-import { downloadRecording } from "../lib/audio";
 import { createS3FileOutput } from "../lib/s3";
 import { calculateDuration } from "../lib/helpers";
-import { transcribeRecording } from "../services/transcription";
+import { audioQueue } from "@repo/queues";
 import { logger } from "../logger";
 import { env } from "../env";
 import { activeCaptures } from "../services/state";
@@ -17,7 +16,7 @@ import {
   webhookDurationHistogram,
 } from "../metrics";
 
-const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, S3_BUCKET, S3_ENDPOINT } = env;
+const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, S3_BUCKET } = env;
 const webhookReceiver = new WebhookReceiver(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!);
 
 const router = Router();
@@ -166,6 +165,9 @@ router.post("/livekit/webhook", async (req, res) => {
     }
 
     // ── egress_ended ────────────
+    // Each capture produces 3 egress events (mixed, caller_a, caller_b).
+    // We atomically save each URL + check if all 3 are ready. Only the
+    // webhook that completes the set enqueues the processing job.
     if (event.event === "egress_ended" && event.egressInfo) {
       const egressId = event.egressInfo.egressId;
       const roomName = event.egressInfo.roomName;
@@ -175,17 +177,12 @@ router.post("/livekit/webhook", async (req, res) => {
         || (event.egressInfo as any).trackResults?.[0]?.location
         || (event.egressInfo as any).trackResults?.[0]?.filename;
 
+      const s3PublicBase = env.S3_PUBLIC_URL || `https://${S3_BUCKET}.s3.${env.S3_REGION}.amazonaws.com`;
       const fileUrl = rawPath && !rawPath.startsWith("http")
-        ? `${S3_ENDPOINT}/${S3_BUCKET}/${rawPath}`
+        ? `${s3PublicBase}/${rawPath}`
         : rawPath;
 
-      // Convert private R2 URL to public URL for external access (e.g. Deepgram)
-      const publicUrl = fileUrl?.replace(
-        `${S3_ENDPOINT}/${S3_BUCKET}`,
-        `https://pub-c4f497a2d9354081a36aee5f920fa419.r2.dev`,
-      );
-
-      logger.info(`[WEBHOOK] Egress complete: ${egressId}, room: ${roomName}, file: ${fileUrl}`);
+      logger.info({ egressId, roomName, fileUrl }, "[WEBHOOK] Egress complete");
 
       let row = await dbq.findCaptureByEgressId(egressId);
       if (!row && roomName) {
@@ -193,53 +190,56 @@ router.post("/livekit/webhook", async (req, res) => {
       }
 
       if (row && fileUrl) {
-        const filepath = fileUrl.toLowerCase();
-        const isMixed = filepath.includes("-mixed");
-        const isCallerA = filepath.includes("-caller_a");
-        const isCallerB = filepath.includes("-caller_b");
-
-        const recordingUpdate: Record<string, any> = {};
-        if (isMixed) {
-          const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch((err) => {
-            logger.error("[WEBHOOK] Download failed:", err.message);
-            return null;
-          });
-          recordingUpdate.recordingUrl = publicUrl;
-          recordingUpdate.localRecordingPath = localPath;
-        } else if (isCallerA) {
-          recordingUpdate.recordingUrlA = publicUrl;
-          transcribeRecording(row.id, publicUrl!, "a")
-            .catch((e) => logger.error({ captureId: row.id }, "[TRANSCRIBE] caller_a failed:", e.message));
-        } else if (isCallerB) {
-          recordingUpdate.recordingUrlB = publicUrl;
-          transcribeRecording(row.id, publicUrl!, "b")
-            .catch((e) => logger.error({ captureId: row.id }, "[TRANSCRIBE] caller_b failed:", e.message));
-        } else {
-          const localPath = await downloadRecording(fileUrl, `${row.id}-mixed.ogg`).catch(() => null);
-          recordingUpdate.recordingUrl = publicUrl;
-          recordingUpdate.localRecordingPath = localPath;
+        // Detect recording type from S3 path
+        // LiveKit egress paths: recordings/{captureId}-mixed.mp4, recordings/{captureId}-caller_a.mp4
+        const pathLower = fileUrl.toLowerCase();
+        let field: "recordingUrl" | "recordingUrlA" | "recordingUrlB" = "recordingUrl";
+        if (pathLower.includes("caller_a") || pathLower.includes("participant-a")) {
+          field = "recordingUrlA";
+        } else if (pathLower.includes("caller_b") || pathLower.includes("participant-b")) {
+          field = "recordingUrlB";
         }
 
-        recordingUpdate.status = "completed";
+        // Compute duration if not yet set
+        const extra: Record<string, any> = {};
         if (!row.durationSeconds && row.startedAt) {
           const endTime = row.endedAt ? new Date(row.endedAt).getTime() : Date.now();
-          recordingUpdate.durationSeconds = Math.round((endTime - new Date(row.startedAt).getTime()) / 1000);
-          recordingUpdate.endedAt = row.endedAt ?? new Date();
+          extra.durationSeconds = Math.round((endTime - new Date(row.startedAt).getTime()) / 1000);
+          extra.endedAt = row.endedAt ?? new Date();
         }
-        await dbq.updateCapture(row.id, recordingUpdate);
-        logger.info(`[WEBHOOK] Recording saved for ${row.id} (${isMixed ? "mixed" : isCallerA ? "caller_a" : "caller_b"})`);
 
+        // Atomic: set this URL + check if all 3 are now present
+        // Returns the row ONLY if this was the update that completed the set
+        // AND status is still "ended" (prevents duplicate enqueue)
+        const ready = await dbq.setRecordingUrlAndCheckReady(row.id, field, fileUrl, extra);
+
+        logger.info({ captureId: row.id, field }, "[WEBHOOK] Recording URL saved");
+
+        // Update in-memory cache
         const cached = activeCaptures.get(row.id);
         if (cached) {
-          cached.status = "completed";
-          if (isMixed) cached.recordingUrl = fileUrl;
-          if (isCallerA) cached.recordingUrlA = fileUrl;
-          if (isCallerB) cached.recordingUrlB = fileUrl;
+          if (field === "recordingUrl") cached.recordingUrl = fileUrl;
+          if (field === "recordingUrlA") cached.recordingUrlA = fileUrl;
+          if (field === "recordingUrlB") cached.recordingUrlB = fileUrl;
         }
 
-        if (isMixed) {
-          setTimeout(() => activeCaptures.delete(row.id), 10000);
-          logger.info(`[WEBHOOK] Capture ${row.id} completed (duration: ${recordingUpdate.durationSeconds ?? 'n/a'}s)`);
+        // If this webhook completed the set → enqueue processing job
+        if (ready) {
+          logger.info({ captureId: row.id }, "[WEBHOOK] All 3 recordings ready — enqueueing processing job");
+
+          await audioQueue.add(
+            "process-audio",
+            {
+              captureId: ready.id,
+              mixedUrl: ready.recordingUrl!,
+              callerAUrl: ready.recordingUrlA!,
+              callerBUrl: ready.recordingUrlB!,
+            },
+            { jobId: `process-${ready.id}` },
+          );
+
+          await dbq.updateCapture(ready.id, { status: "processing" });
+          setTimeout(() => activeCaptures.delete(ready.id), 10_000);
         }
       }
     }

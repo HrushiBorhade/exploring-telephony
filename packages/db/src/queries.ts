@@ -47,6 +47,41 @@ export async function findStaleCaptures() {
     .where(inArray(schema.captures.status, ["calling", "active"]));
 }
 
+/**
+ * Atomically set a recording URL and check if all 3 recordings are present.
+ * Returns the row ONLY if this update caused all 3 to become non-null.
+ * This prevents the race condition where 3 simultaneous egress_ended webhooks
+ * could each read a partially-filled row.
+ */
+export async function setRecordingUrlAndCheckReady(
+  id: string,
+  field: "recordingUrl" | "recordingUrlA" | "recordingUrlB",
+  url: string,
+  extraFields?: Partial<typeof schema.captures.$inferInsert>,
+) {
+  const updates: Record<string, any> = { [field]: url, ...extraFields };
+
+  await db.update(schema.captures).set(updates).where(eq(schema.captures.id, id));
+
+  // Atomic check: only return the row if ALL 3 recording URLs are now present
+  const [row] = await db
+    .select()
+    .from(schema.captures)
+    .where(
+      and(
+        eq(schema.captures.id, id),
+        sql`${schema.captures.recordingUrl} IS NOT NULL`,
+        sql`${schema.captures.recordingUrlA} IS NOT NULL`,
+        sql`${schema.captures.recordingUrlB} IS NOT NULL`,
+        // Only trigger if we haven't already enqueued (status is still "ended")
+        eq(schema.captures.status, "ended"),
+      ),
+    )
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function getSessionByToken(token: string) {
   const [row] = await db
     .select({

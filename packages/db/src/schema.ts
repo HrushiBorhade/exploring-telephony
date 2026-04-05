@@ -82,6 +82,7 @@ export const captures = pgTable("captures_v2", {
   localRecordingPath: text("local_recording_path"),
   transcriptA: text("transcript_a"),
   transcriptB: text("transcript_b"),
+  datasetCsvUrl: text("dataset_csv_url"),
   durationSeconds: integer("duration_seconds"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp("started_at", { withTimezone: true }),

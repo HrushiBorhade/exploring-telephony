@@ -185,6 +185,10 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
         roomService.moveParticipant(consentRoomB, "caller_b", capture.roomName!),
       ]);
 
+      // Announce "both connected" in the capture room
+      agentDispatch.createDispatch(capture.roomName!, "announce-agent")
+        .catch((e) => logger.warn("[CAPTURE] Announce dispatch failed:", e.message));
+
       capture.startedAt = new Date().toISOString();
       capture.status = "active";
       captureActiveGauge.inc();
