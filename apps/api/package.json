@@ -9,11 +9,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@livekit/agents": "^1.2.2",
-    "@livekit/agents-plugin-silero": "^1.2.2",
-    "@opentelemetry/sdk-trace-base": "2.6.1",
     "@repo/db": "workspace:*",
+    "@repo/queues": "workspace:*",
     "@repo/types": "workspace:*",
+    "bullmq": "*",
     "dotenv": "*",
     "express": "*",
     "express-rate-limit": "*",

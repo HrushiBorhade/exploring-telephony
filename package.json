@@ -12,6 +12,9 @@
     "typecheck": "turbo typecheck",
     "dev:api": "cd apps/api && npm run dev",
     "dev:web": "cd apps/web && npm run dev",
+    "dev:worker": "cd apps/workers && pnpm dev",
+    "dev:consent-agent": "cd apps/agents && pnpm dev:consent",
+    "dev:announce-agent": "cd apps/agents && pnpm dev:announce",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
@@ -21,11 +24,6 @@
     "turbo": "^2.9.0"
   },
   "dependencies": {
-    "@opentelemetry/auto-instrumentations-node": "^0.72.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.214.0",
-    "@opentelemetry/resources": "^2.6.1",
-    "@opentelemetry/sdk-node": "^0.214.0",
-    "@opentelemetry/semantic-conventions": "^1.40.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "dotenv": "^17.3.1",

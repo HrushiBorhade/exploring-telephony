@@ -1,0 +1,23 @@
+{
+  "name": "@repo/agents",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev:consent": "tsx src/consent-agent.ts dev",
+    "dev:announce": "tsx src/announce-agent.ts dev",
+    "build": "tsc",
+    "start:consent": "node dist/consent-agent.js start",
+    "start:announce": "node dist/announce-agent.js start"
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.2.2",
+    "@livekit/agents-plugin-silero": "^1.2.2",
+    "dotenv": "*",
+    "livekit-server-sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}
