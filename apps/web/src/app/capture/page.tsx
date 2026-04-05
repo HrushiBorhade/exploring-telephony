@@ -18,9 +18,10 @@ const statusConfig: Record<string, { label: string; className: string; dot: stri
   created:   { label: "Created",   className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
   calling:   { label: "Calling",   className: "bg-yellow-950 text-yellow-400 border-yellow-900",    dot: "bg-yellow-400", pulse: true },
   active:    { label: "Live",      className: "bg-emerald-950 text-emerald-400 border-emerald-900", dot: "bg-emerald-400", pulse: true },
-  ended:     { label: "Ended",     className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
-  failed:    { label: "Failed",    className: "bg-red-950 text-red-400 border-red-900",             dot: "bg-red-400" },
-  completed: { label: "Completed", className: "bg-blue-950 text-blue-400 border-blue-900",          dot: "bg-blue-400" },
+  ended:      { label: "Ended",      className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
+  processing: { label: "Processing", className: "bg-purple-950 text-purple-400 border-purple-900",  dot: "bg-purple-400", pulse: true },
+  failed:     { label: "Failed",     className: "bg-red-950 text-red-400 border-red-900",           dot: "bg-red-400" },
+  completed:  { label: "Completed",  className: "bg-blue-950 text-blue-400 border-blue-900",        dot: "bg-blue-400" },
 };
 
 function formatDuration(s?: number | null) {
@@ -178,7 +179,7 @@ export default function CaptureDashboard() {
                       onClick={() => router.push(`/capture/${c.id}`)}
                     >
                       <TableCell className="pl-6 font-medium">{c.name || "—"}</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
+                      <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
                         {c.phoneA} / {c.phoneB}
                       </TableCell>
                       <TableCell>

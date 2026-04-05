@@ -53,7 +53,7 @@ export function useCapture(id: string) {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 5_000;
-      if (data.status === "calling" || data.status === "active") return 2_000;
+      if (data.status === "calling" || data.status === "active" || data.status === "processing") return 2_000;
       if (data.status === "ended") return data.startedAt ? 2_000 : false;
       if (data.status === "completed") {
         const allRecordings = data.recordingUrl && data.recordingUrlA && data.recordingUrlB;
