@@ -1,7 +1,4 @@
 import "dotenv/config";
-// Telemetry must be initialized before any other imports
-import { initTelemetry, shutdownTelemetry } from "./telemetry";
-initTelemetry();
 
 import express from "express";
 import { logger } from "./logger";
@@ -35,6 +32,11 @@ app.use(webhookRoutes);
 app.use(recordingRoutes);
 app.use(healthRoutes);
 
+// 404 catch-all — return JSON instead of Express default HTML
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
 // ════════════════════════════════════════════════════════════════════
 // Start + Graceful Shutdown
 // ════════════════════════════════════════════════════════════════════
@@ -58,7 +60,6 @@ const server = app.listen(Number(PORT), async () => {
 function shutdown(signal: string) {
   logger.info({ signal }, "Shutting down gracefully...");
   server.close(async () => {
-    await shutdownTelemetry();
     logger.info("HTTP server closed");
     process.exit(0);
   });
