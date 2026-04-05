@@ -2,47 +2,58 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10 --activate && \
+    npm install -g esbuild
 
 # Copy workspace manifests and lockfile first for layer caching
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/db/package.json ./packages/db/
 COPY packages/types/package.json ./packages/types/
+COPY packages/queues/package.json ./packages/queues/
 
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile
 
 # Copy source
 COPY apps/api/ ./apps/api/
 COPY packages/ ./packages/
-COPY drizzle.config.ts ./
 
-RUN pnpm --filter api exec tsc
+# Bundle API + workspace packages into a single JS file.
+# --packages=external keeps node_modules as require() calls.
+RUN esbuild apps/api/src/server.ts \
+    --bundle \
+    --platform=node \
+    --target=node22 \
+    --outfile=dist/server.js \
+    --packages=external \
+    --alias:@repo/db=./packages/db/src/index.ts \
+    --alias:@repo/types=./packages/types/src/index.ts \
+    --alias:@repo/queues=./packages/queues/src/index.ts \
+    --sourcemap
+
+# Create pruned production deps for the API
+RUN pnpm --filter @repo/api deploy --prod --legacy /app/pruned
 
 # ── Runtime stage ────────────────────────────────────────────────────
 FROM node:22-alpine AS runtime
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
 RUN addgroup -S app && adduser -S app -G app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json ./apps/api/
-COPY packages/db/package.json ./packages/db/
-COPY packages/types/package.json ./packages/types/
+# Copy pruned production node_modules (all transitive deps resolved)
+COPY --from=builder /app/pruned/node_modules ./node_modules
 
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts && pnpm store prune
-
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/packages/ ./packages/
+# Copy the single bundled JS file
+COPY --from=builder /app/dist/server.js ./dist/server.js
+COPY --from=builder /app/dist/server.js.map ./dist/server.js.map
 
 RUN mkdir -p recordings && chown app:app recordings
 
 USER app
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3001/health || exit 1
+  CMD wget -qO- http://localhost:8080/health || exit 1
 
-EXPOSE 3001
+EXPOSE 8080
 ENV NODE_ENV=production
-CMD ["node", "apps/api/dist/server.js"]
+CMD ["node", "--enable-source-maps", "dist/server.js"]

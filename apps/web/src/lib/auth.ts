@@ -8,7 +8,7 @@ import { user, session, account, verification } from "@repo/db";
 export const auth = betterAuth({
   trustedOrigins: [
     process.env.BETTER_AUTH_URL || "http://localhost:3002",
-    "http://localhost:3001",
+    "http://localhost:8080",
   ],
   database: drizzleAdapter(db, {
     provider: "pg",

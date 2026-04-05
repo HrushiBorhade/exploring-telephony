@@ -5,11 +5,12 @@ services:
       target: builder
     command: sh -c "npx drizzle-kit push && npx tsx watch apps/api/src/server.ts"
     ports:
-      - "3001:3001"
+      - "8080:8080"
     env_file: .env
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://telephony:telephony@postgres:5432/telephony
+      - REDIS_HOST=redis
     volumes:
       - ./apps/api/src:/app/apps/api/src
       - ./packages:/app/packages
@@ -17,6 +18,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   postgres:
     image: postgres:17-alpine
@@ -36,3 +52,4 @@ services:
 
 volumes:
   pgdata_dev:
+  redis_data:
