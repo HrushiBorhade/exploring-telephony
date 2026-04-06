@@ -163,7 +163,7 @@ export default defineAgent({
     console.log(`[CONSENT] ${room.name}: playing "please wait" loop`);
     while (!disconnected) {
       const waitHandle = session.say("Please wait while we connect the other party.", {
-        allowInterruptions: false,
+        allowInterruptions: true,
       });
       await waitHandle.waitForPlayout();
       // Brief pause between repetitions
