@@ -1,4 +1,5 @@
 import "dotenv/config";
+
 import { Worker } from "bullmq";
 import { redisConnection } from "@repo/queues";
 import { processAudio, type AudioJobData } from "./processors/audio";
