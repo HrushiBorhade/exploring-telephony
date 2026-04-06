@@ -17,11 +17,69 @@ export const auth = betterAuth({
   plugins: [
     phoneNumber({
       sendOTP: async ({ phoneNumber: phone, code }) => {
-        // DEV MODE: log OTP to console (Telnyx international SMS not yet enabled)
-        console.log(`\n[DEV OTP] ================================`);
-        console.log(`[DEV OTP] Phone : ${phone}`);
-        console.log(`[DEV OTP] Code  : ${code}`);
-        console.log(`[DEV OTP] ================================\n`);
+        const apiKey = process.env.AUTHKEY_API_KEY;
+        const wid = process.env.AUTHKEY_WID;
+
+        if (!apiKey || !wid) {
+          console.log(`\n[DEV OTP] ================================`);
+          console.log(`[DEV OTP] Phone : ${phone}`);
+          console.log(`[DEV OTP] Code  : ${code}`);
+          console.log(`[DEV OTP] ================================\n`);
+          return;
+        }
+
+        const mobile = phone.replace(/^\+91/, "");
+        if (!/^\d{10}$/.test(mobile)) {
+          throw new Error(
+            "Invalid phone number format: expected +91 followed by 10 digits"
+          );
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+        try {
+          const response = await fetch(
+            "https://console.authkey.io/restapi/requestjson.php",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Basic ${apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                country_code: "91",
+                mobile,
+                wid,
+                type: "text",
+                bodyValues: { var1: code },
+              }),
+              signal: controller.signal,
+            }
+          );
+
+          if (!response.ok) {
+            const body = await response.text();
+            console.error(
+              `[AuthKey] Failed to send OTP: ${response.status}`,
+              body.slice(0, 500)
+            );
+            throw new Error("Failed to send OTP via WhatsApp");
+          }
+
+          if (process.env.NODE_ENV !== "production") {
+            const body = await response.text();
+            console.log("[AuthKey] OTP sent successfully", body.slice(0, 500));
+          }
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            console.error("[AuthKey] OTP request timed out after 10s");
+            throw new Error("OTP request timed out");
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
       },
       otpLength: 6,
       expiresIn: 300,
