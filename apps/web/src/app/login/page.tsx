@@ -36,29 +36,48 @@ export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const verifyingRef = useRef(false);
+  const cooldownRef = useRef<ReturnType<typeof setInterval>>();
+
+  function startCooldown() {
+    setResendCooldown(30);
+    clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }
 
   async function sendOTP() {
-    if (!phone.startsWith("+") || phone.length < 10) {
-      toast.error("Use E.164 format: +91XXXXXXXXXX");
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length !== 10) {
+      toast.error("Enter a valid 10-digit mobile number");
       return;
     }
     setLoading(true);
-    const { error } = await authClient.phoneNumber.sendOtp({ phoneNumber: phone });
+    const { error } = await authClient.phoneNumber.sendOtp({ phoneNumber: `+91${digits}` });
     setLoading(false);
     if (error) {
       toast.error(error.message ?? "Failed to send code");
       return;
     }
-    toast.success("Code sent!");
+    toast.success("Code sent via WhatsApp!");
     setStep("otp");
+    startCooldown();
   }
 
   async function verifyOTP(code: string) {
     if (code.length !== 6 || verifyingRef.current) return;
     verifyingRef.current = true;
     setLoading(true);
-    const { error } = await authClient.phoneNumber.verify({ phoneNumber: phone, code });
+    const digits = phone.replace(/\D/g, "");
+    const { error } = await authClient.phoneNumber.verify({ phoneNumber: `+91${digits}`, code });
     setLoading(false);
     if (error) {
       toast.error(error.message ?? "Invalid code");
@@ -90,8 +109,8 @@ export default function LoginPage() {
           <h1 className="text-xl font-semibold">Voice Capture</h1>
           <p className="text-sm text-muted-foreground">
             {step === "phone"
-              ? "Enter your phone number to sign in"
-              : `Enter the 6-digit code sent to ${phone}`}
+              ? "Enter your mobile number to sign in"
+              : `Enter the 6-digit code sent to +91${phone.replace(/\D/g, "")}`}
           </p>
         </motion.div>
 
@@ -106,22 +125,27 @@ export default function LoginPage() {
               className="space-y-3"
             >
               <motion.div variants={item}>
-                <Input
-                  type="tel"
-                  placeholder="+91XXXXXXXXXX"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !loading && sendOTP()}
-                  disabled={loading}
-                  className="text-center font-mono tracking-widest"
-                  autoFocus
-                />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-mono text-muted-foreground shrink-0">+91</span>
+                  <Input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="9876543210"
+                    maxLength={10}
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    onKeyDown={(e) => e.key === "Enter" && !loading && sendOTP()}
+                    disabled={loading}
+                    className="text-center font-mono tracking-widest"
+                    autoFocus
+                  />
+                </div>
               </motion.div>
               <motion.div variants={item}>
                 <Button
                   className="w-full"
                   onClick={sendOTP}
-                  disabled={loading || phone.length < 10}
+                  disabled={loading || phone.replace(/\D/g, "").length !== 10}
                 >
                   {loading ? (
                     <><LoaderCircle className="size-4 animate-spin" /> Sending...</>
@@ -169,15 +193,24 @@ export default function LoginPage() {
                 </motion.div>
               )}
 
-              <motion.div variants={item}>
+              <motion.div variants={item} className="flex gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full text-muted-foreground"
-                  onClick={() => { setStep("phone"); setOtp(""); }}
+                  className="flex-1 text-muted-foreground"
+                  onClick={() => { setStep("phone"); setOtp(""); setResendCooldown(0); clearInterval(cooldownRef.current); }}
                   disabled={loading}
                 >
                   Change number
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 text-muted-foreground"
+                  onClick={sendOTP}
+                  disabled={loading || resendCooldown > 0}
+                >
+                  {resendCooldown > 0 ? `Resend (${resendCooldown}s)` : "Resend code"}
                 </Button>
               </motion.div>
             </motion.div>
