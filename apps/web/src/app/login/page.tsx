@@ -38,7 +38,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const verifyingRef = useRef(false);
-  const cooldownRef = useRef<ReturnType<typeof setInterval>>();
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   function startCooldown() {
     setResendCooldown(30);

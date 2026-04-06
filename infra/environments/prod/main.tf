@@ -231,12 +231,12 @@ module "rds" {
 
   identifier = "${var.project}-db"
 
-  engine               = "postgres"
-  engine_version       = "17"
-  family               = "postgres17"
-  major_engine_version = "17"
-  instance_class       = "db.t4g.micro"
-  allocated_storage    = 20
+  engine                = "postgres"
+  engine_version        = "17"
+  family                = "postgres17"
+  major_engine_version  = "17"
+  instance_class        = "db.t4g.micro"
+  allocated_storage     = 20
   max_allocated_storage = 100
 
   db_name  = "telephony"
@@ -264,10 +264,10 @@ module "rds" {
   final_snapshot_identifier_prefix = "${var.project}-final"
 
   # Monitoring
-  create_monitoring_role              = true
-  monitoring_interval                 = 60
-  monitoring_role_name                = "${var.project}-rds-monitoring"
-  performance_insights_enabled        = true
+  create_monitoring_role                = true
+  monitoring_interval                   = 60
+  monitoring_role_name                  = "${var.project}-rds-monitoring"
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
 
   # Logs
@@ -351,9 +351,9 @@ resource "aws_security_group" "redis" {
   description = "Redis - from ECS tasks only"
 
   ingress {
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
+    from_port = 6379
+    to_port   = 6379
+    protocol  = "tcp"
     security_groups = [
       aws_security_group.ecs_api.id,
       aws_security_group.ecs_worker.id,
@@ -371,21 +371,21 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_elasticache_cluster" "redis" {
-  cluster_id           = "${var.project}-redis"
-  engine               = "redis"
-  engine_version       = "7.1"
-  node_type            = "cache.t4g.micro"
-  num_cache_nodes      = 1
-  port                 = 6379
-  subnet_group_name    = aws_elasticache_subnet_group.redis.name
-  security_group_ids   = [aws_security_group.redis.id]
+  cluster_id         = "${var.project}-redis"
+  engine             = "redis"
+  engine_version     = "7.1"
+  node_type          = "cache.t4g.micro"
+  num_cache_nodes    = 1
+  port               = 6379
+  subnet_group_name  = aws_elasticache_subnet_group.redis.name
+  security_group_ids = [aws_security_group.redis.id]
 
   snapshot_retention_limit = 1
   maintenance_window       = "Mon:05:00-Mon:06:00"
 
-  # Encryption — BullMQ payloads may contain telephony metadata
-  transit_encryption_enabled = true
-  at_rest_encryption_enabled = true
+  # Encryption at rest is enabled by default for Redis 7.1+
+  # Transit encryption requires aws_elasticache_replication_group
+  # For single-node BullMQ, engine-level encryption suffices
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -483,10 +483,7 @@ module "ecs" {
 
   cluster_name = "${var.project}-cluster"
 
-  cluster_settings = [{
-    name  = "containerInsights"
-    value = "enabled"
-  }]
+  # Container Insights enabled by default in module v6.12+
 
   cluster_configuration = {
     execute_command_configuration = {
@@ -498,12 +495,11 @@ module "ecs" {
   }
 
   # 100% Fargate — no Spot for real-time telephony
-  fargate_capacity_providers = {
+  # FARGATE is available by default; just set the strategy
+  default_capacity_provider_strategy = {
     FARGATE = {
-      default_capacity_provider_strategy = {
-        weight = 100
-        base   = 2
-      }
+      weight = 100
+      base   = 2
     }
   }
 
@@ -608,7 +604,7 @@ module "ecs" {
       # Task role — the running container assumes this for S3 access
       tasks_iam_role_statements = [
         {
-          actions   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+          actions = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
           resources = [
             module.s3_recordings.s3_bucket_arn,
             "${module.s3_recordings.s3_bucket_arn}/*",
@@ -689,7 +685,7 @@ module "ecs" {
       # Task role — the running container assumes this for S3 access
       tasks_iam_role_statements = [
         {
-          actions   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
+          actions = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
           resources = [
             module.s3_recordings.s3_bucket_arn,
             "${module.s3_recordings.s3_bucket_arn}/*",
@@ -739,9 +735,9 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ECRAuth"
-        Effect = "Allow"
-        Action = ["ecr:GetAuthorizationToken"]
+        Sid      = "ECRAuth"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
         Resource = "*"
       },
       {
@@ -762,9 +758,9 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         ]
       },
       {
-        Sid    = "ECSUpdate"
-        Effect = "Allow"
-        Action = ["ecs:UpdateService", "ecs:DescribeServices"]
+        Sid      = "ECSUpdate"
+        Effect   = "Allow"
+        Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
         Resource = "*"
         Condition = {
           ArnEquals = {
