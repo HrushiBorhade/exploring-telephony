@@ -524,14 +524,14 @@ module "ecs" {
           essential = true
           image     = "${aws_ecr_repository.api.repository_url}:latest"
 
-          port_mappings = [{
+          portMappings = [{
             name          = "api"
             containerPort = 8080
             hostPort      = 8080
             protocol      = "tcp"
           }]
 
-          health_check = {
+          healthCheck = {
             command     = ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
             interval    = 30
             retries     = 3
@@ -560,7 +560,7 @@ module "ecs" {
             { name = "GEMINI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:GEMINI_API_KEY::" },
           ]
 
-          readonly_root_filesystem = false
+          readonlyRootFilesystem = false
 
           enable_cloudwatch_logging = true
         }
@@ -648,7 +648,7 @@ module "ecs" {
             { name = "S3_SECRET_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_SECRET_KEY::" },
           ]
 
-          readonly_root_filesystem = false
+          readonlyRootFilesystem = false
 
           enable_cloudwatch_logging = true
         }
