@@ -4,7 +4,7 @@
 
 terraform {
   backend "s3" {
-    bucket         = "telephony-terraform-state-ACCOUNT_ID"
+    bucket         = "telephony-terraform-state-475568920420"
     key            = "prod/terraform.tfstate"
     region         = "ap-south-1"
     dynamodb_table = "telephony-terraform-locks"

@@ -283,7 +283,7 @@ module "s3_recordings" {
   source  = "terraform-aws-modules/s3-bucket/aws"
   version = "~> 4.0"
 
-  bucket = "${var.project}-recordings-${var.environment}"
+  bucket = "${var.project}-recordings-${var.environment}-475568920420"
 
   # Block all public access
   block_public_acls       = true
