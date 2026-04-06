@@ -110,8 +110,12 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
     logger.info(`[CAPTURE] Rooms created: ${consentRoomA}, ${consentRoomB}, ${capture.roomName}`);
 
     await Promise.all([
-      agentDispatch.createDispatch(consentRoomA, "consent-agent"),
-      agentDispatch.createDispatch(consentRoomB, "consent-agent"),
+      agentDispatch.createDispatch(consentRoomA, "telephony-agent", {
+        metadata: JSON.stringify({ type: "consent" }),
+      }),
+      agentDispatch.createDispatch(consentRoomB, "telephony-agent", {
+        metadata: JSON.stringify({ type: "consent" }),
+      }),
     ]);
     logger.info(`[CAPTURE] Consent agents dispatched`);
 
@@ -186,8 +190,9 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
       ]);
 
       // Announce "both connected" in the capture room
-      agentDispatch.createDispatch(capture.roomName!, "announce-agent")
-        .catch((e) => logger.warn("[CAPTURE] Announce dispatch failed:", e.message));
+      agentDispatch.createDispatch(capture.roomName!, "telephony-agent", {
+          metadata: JSON.stringify({ type: "announce" }),
+        }).catch((e) => logger.warn("[CAPTURE] Announce dispatch failed:", e.message));
 
       capture.startedAt = new Date().toISOString();
       capture.status = "active";

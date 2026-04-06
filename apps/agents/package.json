@@ -6,12 +6,16 @@
     "dev:consent": "tsx src/consent-agent.ts dev",
     "dev:announce": "tsx src/announce-agent.ts dev",
     "build": "tsc",
+    "start": "node dist/agent.js start",
     "start:consent": "node dist/consent-agent.js start",
-    "start:announce": "node dist/announce-agent.js start"
+    "start:announce": "node dist/announce-agent.js start",
+    "dev": "tsx src/agent.ts dev",
+    "download-files": "node dist/agent.js download-files"
   },
   "dependencies": {
     "@livekit/agents": "^1.2.2",
     "@livekit/agents-plugin-silero": "^1.2.2",
+    "@livekit/rtc-node": "^0.13.24",
     "dotenv": "*",
     "livekit-server-sdk": "*"
   },
