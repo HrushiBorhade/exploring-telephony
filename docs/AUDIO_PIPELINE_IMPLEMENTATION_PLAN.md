@@ -6,7 +6,7 @@
 
 ## Critical: Rotate Your Gemini API Key
 
-The key `AIzaSyDaUlhpUSscTwHdXefY97GMmlYjbIgLYrQ` was shared in plain text in this conversation. **Rotate it immediately** after setup at https://aistudio.google.com/apikey.
+The Gemini API key was previously exposed in this file. **It has been rotated.** Generate a new key at https://aistudio.google.com/apikey.
 
 ---
 
