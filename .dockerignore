@@ -8,7 +8,7 @@ recordings
 .git
 *.md
 docs
-drizzle
+# drizzle — needed for runtime migrations
 TELNYX_LIVEKIT_REFERENCE.md
 PRODUCT_VISION.md
 TWILIO_RESEARCH.md

@@ -14,9 +14,10 @@ COPY packages/queues/package.json ./packages/queues/
 
 RUN pnpm install --frozen-lockfile
 
-# Copy source
+# Copy source + migration files
 COPY apps/api/ ./apps/api/
 COPY packages/ ./packages/
+COPY drizzle/ ./drizzle/
 
 # Bundle API + workspace packages into a single JS file.
 # --packages=external keeps node_modules as require() calls.
@@ -43,9 +44,10 @@ RUN addgroup -S app && adduser -S app -G app
 # Copy pruned production node_modules (all transitive deps resolved)
 COPY --from=builder /app/pruned/node_modules ./node_modules
 
-# Copy the single bundled JS file
+# Copy the single bundled JS file + migration SQL files
 COPY --from=builder /app/dist/server.js ./dist/server.js
 COPY --from=builder /app/dist/server.js.map ./dist/server.js.map
+COPY --from=builder /app/drizzle ./drizzle
 
 RUN mkdir -p recordings && chown app:app recordings
 

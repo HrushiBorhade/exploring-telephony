@@ -41,33 +41,46 @@ app.use((_req, res) => {
 // Start + Graceful Shutdown
 // ════════════════════════════════════════════════════════════════════
 
-const server = app.listen(Number(PORT), async () => {
-  logger.info({ port: PORT }, "Voice Capture Platform started");
-
-  // Reconcile captures orphaned by a previous crash/restart
+async function start() {
+  // Run DB migrations before starting the server
   try {
-    const stale = await dbq.findStaleCaptures();
-    for (const c of stale) {
-      await dbq.updateCapture(c.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 });
-      logger.warn({ captureId: c.id, prevStatus: c.status }, "[STARTUP] Marked orphaned capture as ended");
-    }
-    if (stale.length > 0) logger.info(`[STARTUP] Reconciled ${stale.length} orphaned capture(s)`);
+    await dbq.runMigrations();
+    logger.info("[STARTUP] Database migrations applied");
   } catch (err: any) {
-    logger.error("[STARTUP] Reconciliation failed:", err.message);
-  }
-});
-
-function shutdown(signal: string) {
-  logger.info({ signal }, "Shutting down gracefully...");
-  server.close(async () => {
-    logger.info("HTTP server closed");
-    process.exit(0);
-  });
-  setTimeout(() => {
-    logger.error("Forced shutdown after timeout");
+    logger.fatal({ error: err.message }, "[STARTUP] Migration failed — aborting");
     process.exit(1);
-  }, 30_000);
+  }
+
+  const server = app.listen(Number(PORT), async () => {
+    logger.info({ port: PORT }, "Voice Capture Platform started");
+
+    // Reconcile captures orphaned by a previous crash/restart
+    try {
+      const stale = await dbq.findStaleCaptures();
+      for (const c of stale) {
+        await dbq.updateCapture(c.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 });
+        logger.warn({ captureId: c.id, prevStatus: c.status }, "[STARTUP] Marked orphaned capture as ended");
+      }
+      if (stale.length > 0) logger.info(`[STARTUP] Reconciled ${stale.length} orphaned capture(s)`);
+    } catch (err: any) {
+      logger.error("[STARTUP] Reconciliation failed:", err.message);
+    }
+  });
+
+  function shutdown(signal: string) {
+    logger.info({ signal }, "Shutting down gracefully...");
+    server.close(async () => {
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+    setTimeout(() => {
+      logger.error("Forced shutdown after timeout");
+      process.exit(1);
+    }, 30_000);
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+start();
