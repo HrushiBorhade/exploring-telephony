@@ -4,6 +4,7 @@ import { LoginForm } from "@/components/login-form";
 import { AudioWaveformIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
+import { FlickeringGrid } from "@/components/ui/flickering-grid";
 
 const stagger = pageStagger;
 const fadeUp = pageFadeUp;
@@ -35,37 +36,61 @@ export default function LoginPage() {
         </div>
       </motion.div>
 
-      {/* Right panel — animated waveform */}
-      <div className="relative hidden bg-muted lg:block overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-secondary via-muted to-secondary" />
-        <div className="absolute inset-0 dot-grid" />
+      {/* Right panel — flickering grid + audio visualization */}
+      <div className="relative hidden bg-background lg:block overflow-hidden">
+        {/* Flickering grid background */}
+        <div className="absolute inset-0">
+          <FlickeringGrid
+            squareSize={4}
+            gridGap={6}
+            flickerChance={0.3}
+            color="var(--color-primary)"
+            maxOpacity={0.15}
+          />
+        </div>
+
+        {/* Radial fade at edges */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,var(--color-background)_70%)]" />
+
+        {/* Content */}
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div
-            className="text-center space-y-8 px-8"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1, delay: 0.3 }}
+            className="text-center space-y-10 px-8"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
           >
-            {/* Waveform bars */}
-            <div className="flex items-center justify-center gap-[3px] h-20 mx-auto">
-              {Array.from({ length: 24 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-[3px] rounded-full bg-muted-foreground/30"
-                  style={{
-                    animation: `wave-bar ${1.2 + Math.sin(i * 0.5) * 0.4}s ease-in-out infinite`,
-                    animationDelay: `${i * 0.06}s`,
-                    height: "100%",
-                    transformOrigin: "center",
-                  }}
-                />
-              ))}
+            {/* Audio orb — pulsing circle with waveform bars */}
+            <div className="relative mx-auto size-40">
+              {/* Outer glow rings */}
+              <div className="absolute inset-0 rounded-full bg-primary/5 animate-ping" style={{ animationDuration: "3s" }} />
+              <div className="absolute inset-3 rounded-full bg-primary/8 animate-ping" style={{ animationDuration: "2.5s", animationDelay: "0.5s" }} />
+
+              {/* Core orb */}
+              <div className="absolute inset-6 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 backdrop-blur-sm flex items-center justify-center">
+                {/* Waveform bars inside orb */}
+                <div className="flex items-center gap-[2px] h-12">
+                  {Array.from({ length: 16 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-[2px] rounded-full bg-primary/60"
+                      style={{
+                        animation: `wave-bar ${1.0 + Math.sin(i * 0.6) * 0.5}s ease-in-out infinite`,
+                        animationDelay: `${i * 0.08}s`,
+                        height: "100%",
+                        transformOrigin: "center",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground tracking-[0.2em] uppercase">
+
+            <div className="space-y-3">
+              <p className="text-sm font-heading font-semibold text-foreground/80 tracking-[0.15em] uppercase">
                 Annote ASR
               </p>
-              <p className="text-sm text-muted-foreground/70 max-w-[260px] mx-auto leading-relaxed">
+              <p className="text-sm text-muted-foreground max-w-[240px] mx-auto leading-relaxed">
                 Per-speaker audio capture for ASR datasets
               </p>
             </div>
