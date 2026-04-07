@@ -16,7 +16,6 @@ import {
 import {
   PhoneCallIcon,
   SettingsIcon,
-  CircleHelpIcon,
   AudioWaveformIcon,
 } from "lucide-react";
 import { useSession } from "@/lib/auth-client";
@@ -35,21 +34,16 @@ const navSecondary = [
     url: "/settings",
     icon: <SettingsIcon />,
   },
-  {
-    title: "Help",
-    url: "https://github.com/HrushiBorhade/voice-agent-platform",
-    icon: <CircleHelpIcon />,
-    external: true,
-  },
 ];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session } = useSession();
 
+  const phoneNumber = String((session?.user as Record<string, unknown>)?.phoneNumber ?? "");
   const user = {
-    name: session?.user?.name || "User",
-    email: session?.user?.email || "",
-    avatar: session?.user?.image || "",
+    name: phoneNumber || session?.user?.name || "User",
+    email: "",
+    avatar: "",
   };
 
   return (
