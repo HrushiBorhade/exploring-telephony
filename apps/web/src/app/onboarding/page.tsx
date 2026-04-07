@@ -10,6 +10,7 @@ import { stepVariants, spring } from "@/lib/motion";
 import { AuthPanel } from "@/components/auth-panel";
 import { useProfile } from "@/lib/api";
 import { STEPS, type Step } from "./_steps/shared";
+import { ProfileStep } from "./_steps/profile-step";
 
 function StepDots({ current, total }: { current: number; total: number }) {
   return (
@@ -133,26 +134,7 @@ function OnboardingContent() {
                         exit="exit"
                         className="flex flex-col gap-4 p-6"
                       >
-                        {/* ProfileStep — placeholder until Task 9 */}
-                        <div className="space-y-4">
-                          <div>
-                            <h2 className="text-lg font-semibold font-heading">
-                              Complete your profile
-                            </h2>
-                            <p className="text-sm text-muted-foreground">
-                              Tell us about yourself
-                            </p>
-                          </div>
-                          <p className="text-sm text-muted-foreground py-8 text-center">
-                            Profile form loading...
-                          </p>
-                          <button
-                            onClick={handleNext}
-                            className="text-primary text-sm underline"
-                          >
-                            Next (placeholder)
-                          </button>
-                        </div>
+                        <ProfileStep onNext={handleNext} profile={profile} />
                       </motion.div>
                     )}
                     {currentStep === "languages" && (
