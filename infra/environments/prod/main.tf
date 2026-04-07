@@ -285,11 +285,11 @@ module "s3_recordings" {
 
   bucket = "${var.project}-recordings-${var.environment}-475568920420"
 
-  # Block all public access
+  # Block ACL-based public access, but allow bucket policies (for captures/ public-read)
   block_public_acls       = true
-  block_public_policy     = true
+  block_public_policy     = false
   ignore_public_acls      = true
-  restrict_public_buckets = true
+  restrict_public_buckets = false
 
   versioning = {
     status = true
@@ -334,6 +334,21 @@ module "s3_recordings" {
       max_age_seconds = 3600
     },
   ]
+
+  # Public-read for processed outputs (captures/); raw egress (recordings/) stays private
+  attach_policy = true
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadCaptures"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "arn:aws:s3:::${var.project}-recordings-${var.environment}-475568920420/captures/*"
+      }
+    ]
+  })
 }
 
 # ─────────────────────────────────────────────────────────────────────

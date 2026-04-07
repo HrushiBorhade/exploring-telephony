@@ -10,6 +10,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "*",
     "@google/genai": "*",
     "@repo/db": "workspace:*",
     "@repo/queues": "workspace:*",

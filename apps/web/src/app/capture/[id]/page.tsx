@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
 import { useState, useMemo, memo } from "react";
-import { useCapture, useStartCapture, useEndCapture } from "@/lib/api";
+import { useCapture, useStartCapture, useEndCapture, proxyAudioUrl } from "@/lib/api";
 import type { Utterance } from "@/lib/types";
 
 function fmt(s?: number | null) {
@@ -42,6 +42,7 @@ const statusConfig: Record<string, { label: string; badgeClass: string; dot: str
   ended:      { label: "Processing...",    badgeClass: "bg-blue-950 text-blue-300 border-blue-900",          dot: "bg-blue-400", pulse: true },
   processing: { label: "Transcribing...",  badgeClass: "bg-purple-950 text-purple-300 border-purple-900",    dot: "bg-purple-400", pulse: true },
   completed:  { label: "Recording Ready",  badgeClass: "bg-emerald-950 text-emerald-300 border-emerald-900", dot: "bg-emerald-400" },
+  failed:     { label: "Failed",           badgeClass: "bg-red-950 text-red-300 border-red-900",             dot: "bg-red-400" },
 };
 
 function DetailSkeleton() {
@@ -68,7 +69,7 @@ function DetailSkeleton() {
   );
 }
 
-function parseUtterances(raw: string | null | undefined): Utterance[] {
+function parseUtterances(raw: string | null | undefined, captureId: string): Utterance[] {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
@@ -78,7 +79,7 @@ function parseUtterances(raw: string | null | undefined): Utterance[] {
       text: u.text ?? u.content ?? "",
       language: u.language ?? "en",
       emotion: u.emotion ?? "neutral",
-      audioUrl: u.audioUrl ?? "",
+      audioUrl: u.audioUrl ? proxyAudioUrl(u.audioUrl, captureId) : "",
     }));
   } catch {
     return [];
@@ -144,8 +145,8 @@ export default function CaptureDetailPage() {
   const endMutation = useEndCapture(id);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
 
-  const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA), [capture?.transcriptA]);
-  const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB), [capture?.transcriptB]);
+  const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id), [capture?.transcriptA, id]);
+  const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id), [capture?.transcriptB, id]);
   const hasUtterances = utterancesA.length > 0 || utterancesB.length > 0;
 
   if (isLoading && !capture) return <DetailSkeleton />;
@@ -195,7 +196,7 @@ export default function CaptureDetailPage() {
 
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {isCompleted && capture.datasetCsvUrl && (
-            <a href={capture.datasetCsvUrl} download className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <Download className="size-3.5" />
               CSV
             </a>
@@ -290,7 +291,7 @@ export default function CaptureDetailPage() {
             <>
               {capture.recordingUrl && (
                 <WaveformPlayer
-                  url={capture.recordingUrl}
+                  url={proxyAudioUrl(capture.recordingUrl, id)}
                   label="Mixed \u2014 both participants"
                   accentColor="#a1a1aa"
                   onDurationLoaded={setAudioDuration}
@@ -300,14 +301,14 @@ export default function CaptureDetailPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {capture.recordingUrlA && (
                   <WaveformPlayer
-                    url={capture.recordingUrlA}
+                    url={proxyAudioUrl(capture.recordingUrlA, id)}
                     label={`A \u2014 ${capture.phoneA}`}
                     accentColor={participantColor.a}
                   />
                 )}
                 {capture.recordingUrlB && (
                   <WaveformPlayer
-                    url={capture.recordingUrlB}
+                    url={proxyAudioUrl(capture.recordingUrlB, id)}
                     label={`B \u2014 ${capture.phoneB}`}
                     accentColor={participantColor.b}
                   />
@@ -316,7 +317,7 @@ export default function CaptureDetailPage() {
 
               {/* Mobile CSV download (hidden on desktop where it's in header) */}
               {capture.datasetCsvUrl && (
-                <a href={capture.datasetCsvUrl} download className="sm:hidden inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="sm:hidden inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Download className="size-3.5" />
                   Download CSV
                 </a>
@@ -329,7 +330,7 @@ export default function CaptureDetailPage() {
                       Utterances
                     </p>
                     {capture.datasetCsvUrl && (
-                      <a href={capture.datasetCsvUrl} download className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                      <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
                         <Download className="size-3" />
                         CSV
                       </a>

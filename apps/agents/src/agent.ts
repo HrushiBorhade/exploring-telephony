@@ -38,7 +38,7 @@ const ANNOUNCE_AUDIO = path.resolve(__dirname, "../assets/announce_48k.wav");
 const SAMPLE_RATE = 48_000;
 const NUM_CHANNELS = 1;
 const SAMPLES_PER_FRAME = SAMPLE_RATE / 10; // 100ms chunks = 4800 samples
-const DTMF_TIMEOUT_MS = 30_000;
+const DTMF_TIMEOUT_MS = 60_000;
 const CALLER_WAIT_MS = 60_000;
 const PLEASE_WAIT_INTERVAL_MS = 5_000;
 const WAIT_FOR_CALLERS_MS = 30_000;

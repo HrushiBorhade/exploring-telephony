@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "*",
     "@repo/db": "workspace:*",
     "@repo/queues": "workspace:*",
     "@repo/types": "workspace:*",

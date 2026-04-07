@@ -9,7 +9,7 @@ export const consentResolvers = new Map<string, (result: boolean) => void>();
  * Webhook resolves instantly when available, but room_metadata_changed
  * delivery is unreliable — polling every 500ms is the reliable path.
  */
-export function waitForConsent(roomName: string, timeoutMs = 50_000): Promise<boolean> {
+export function waitForConsent(roomName: string, timeoutMs = 90_000): Promise<boolean> {
   return new Promise((resolve) => {
     let resolved = false;
 

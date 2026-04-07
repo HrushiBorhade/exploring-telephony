@@ -52,7 +52,7 @@ export const auth = betterAuth({
                 mobile,
                 wid,
                 type: "text",
-                bodyValues: { var1: code },
+                bodyValues: { "1": code },
               }),
               signal: controller.signal,
             }

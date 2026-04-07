@@ -24,6 +24,8 @@
     "turbo": "^2.9.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1025.0",
+    "@aws-sdk/s3-request-presigner": "^3.1025.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "dotenv": "^17.3.1",

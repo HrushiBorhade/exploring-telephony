@@ -5,7 +5,7 @@ import path from "path";
 import * as dbq from "@repo/db";
 import { transcribeWithGemini, type Segment } from "../lib/gemini";
 import { convertToMp3, sliceToMp3, formatTimestamp } from "../lib/ffmpeg";
-import { uploadToS3 } from "../lib/s3";
+import { uploadToS3, downloadFromS3 } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { logger } from "../logger";
 
@@ -30,9 +30,9 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     log.info("Step 1: Downloading recordings");
 
     const [mixedBuf, callerABuf, callerBBuf] = await Promise.all([
-      downloadFile(mixedUrl),
-      downloadFile(callerAUrl),
-      downloadFile(callerBUrl),
+      downloadFromS3(mixedUrl),
+      downloadFromS3(callerAUrl),
+      downloadFromS3(callerBUrl),
     ]);
 
     const mixedRaw = path.join(tmpDir, "mixed.mp4");
@@ -121,6 +121,7 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       recordingUrl: mixedUrl2,
       recordingUrlA: trackAUrl,
       recordingUrlB: trackBUrl,
+      datasetCsvUrl: csvUrl,
       transcriptA: JSON.stringify(resultA.segments.map((s, i) => ({
         start: s.startSeconds,
         end: s.endSeconds,

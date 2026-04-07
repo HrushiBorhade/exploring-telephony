@@ -132,10 +132,10 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
 
   res.json({ status: "calling", roomName: capture.roomName });
 
-  // Background: 90s hard deadline
+  // Background: 150s hard deadline (30s ring + 60s DTMF + 60s buffer)
   const bgDeadline = setTimeout(() => {
     if (capture.status === "calling") {
-      logger.error({ captureId: capture.id }, "[CAPTURE] Background flow timed out (90s)");
+      logger.error({ captureId: capture.id }, "[CAPTURE] Background flow timed out (150s)");
       capture.status = "ended";
       capture.endedAt = new Date().toISOString();
       capture.durationSeconds = 0;
@@ -145,7 +145,7 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
       roomService.deleteRoom(consentRoomB).catch((e) => logger.warn("[CLEANUP]", e.message));
       roomService.deleteRoom(capture.roomName!).catch((e) => logger.warn("[CLEANUP]", e.message));
     }
-  }, 90_000);
+  }, 150_000);
 
   (async () => {
     const cleanupRoom = (name: string) =>

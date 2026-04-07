@@ -4,6 +4,27 @@ import type { Capture } from "./types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
+/**
+ * Rewrite an S3 URL to go through the API presigned-URL proxy.
+ * DB stores canonical S3 URLs; the browser can't access them directly.
+ * The proxy returns a 302 redirect to a short-lived presigned URL.
+ *
+ * Input:  https://bucket.s3.region.amazonaws.com/captures/{captureId}/participant-a/clips/001.mp3
+ * Output: {API}/api/captures/{captureId}/audio/participant-a/clips/001.mp3
+ */
+export function proxyAudioUrl(s3Url: string, captureId: string): string {
+  try {
+    const parsed = new URL(s3Url);
+    const prefix = `/captures/${captureId}/`;
+    const idx = parsed.pathname.indexOf(prefix);
+    if (idx === -1) return s3Url;
+    const relativePath = parsed.pathname.slice(idx + prefix.length);
+    return `${API}/api/captures/${captureId}/audio/${relativePath}`;
+  } catch {
+    return s3Url;
+  }
+}
+
 // ── Query keys ──────────────────────────────────────────────────────
 
 export const captureKeys = {

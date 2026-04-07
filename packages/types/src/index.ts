@@ -5,7 +5,7 @@ export interface Capture {
   phoneA: string;
   phoneB: string;
   language: string;
-  status: "created" | "calling" | "active" | "ended" | "processing" | "completed";
+  status: "created" | "calling" | "active" | "ended" | "processing" | "completed" | "failed";
   roomName?: string;
   egressId?: string;
   recordingUrl?: string;
