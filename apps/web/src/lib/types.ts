@@ -41,3 +41,31 @@ export interface Utterance {
   emotion: "happy" | "sad" | "angry" | "neutral";
   audioUrl: string;
 }
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  age: number;
+  gender: string;
+  city: string;
+  state: string;
+  onboardingCompleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserLanguage {
+  id: number;
+  userId: string;
+  languageCode: string;
+  languageName: string;
+  isPrimary: boolean;
+  dialects: string[] | null;
+  createdAt: string;
+}
+
+export interface ProfileResponse {
+  profile: UserProfile | null;
+  languages: UserLanguage[];
+  onboardingCompleted: boolean;
+}
