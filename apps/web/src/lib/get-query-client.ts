@@ -10,7 +10,7 @@ function makeQueryClient() {
       queries: {
         staleTime: 5_000,
         retry: 2,
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus: false,
       },
       dehydrate: {
         shouldDehydrateQuery: (query) =>
