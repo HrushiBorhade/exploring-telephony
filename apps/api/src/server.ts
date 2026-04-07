@@ -11,6 +11,7 @@ import captureRoutes from "./routes/captures";
 import webhookRoutes from "./routes/webhooks";
 import recordingRoutes from "./routes/recordings";
 import healthRoutes from "./routes/health";
+import profileRoutes from "./routes/profile";
 
 const { PORT } = env;
 
@@ -31,6 +32,7 @@ app.use(captureRoutes);
 app.use(webhookRoutes);
 app.use(recordingRoutes);
 app.use(healthRoutes);
+app.use(profileRoutes);
 
 // 404 catch-all — return JSON instead of Express default HTML
 app.use((_req, res) => {
