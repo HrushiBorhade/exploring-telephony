@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1774608362725,
-      "tag": "0000_faithful_rick_jones",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1743465600000,
-      "tag": "0001_add_auth_tables",
+      "when": 1775549986503,
+      "tag": "0000_next_jetstream",
       "breakpoints": true
     }
   ]
