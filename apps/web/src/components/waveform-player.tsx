@@ -20,11 +20,6 @@ interface WaveformPlayerProps {
   onDurationLoaded?: (seconds: number) => void;
 }
 
-/**
- * Calls setActiveItem on mount so the audio element loads metadata immediately
- * (enables the play button + reports duration without needing a first click).
- * Also fires onDurationLoaded when the browser reads the audio headers.
- */
 function TrackInitializer({
   url,
   onDurationLoaded,
@@ -34,12 +29,10 @@ function TrackInitializer({
 }) {
   const { setActiveItem, duration } = useAudioPlayer();
 
-  // Load the audio src on mount so duration is available before first play
   useEffect(() => {
     setActiveItem({ id: url, src: url });
   }, [url, setActiveItem]);
 
-  // Report actual file duration once the browser knows it
   useEffect(() => {
     if (
       duration != null &&
@@ -75,40 +68,42 @@ export function WaveformPlayer({
     document.body.removeChild(a);
   }
 
+  const hasLabel = label.length > 0;
+
   return (
     <AudioPlayerProvider>
       <TrackInitializer url={url} onDurationLoaded={onDurationLoaded} />
-      <div className={label ? "space-y-1.5" : ""}>
-        {label && (
+      <div className={hasLabel ? "space-y-1" : ""}>
+        {hasLabel && (
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium truncate" style={{ color: accentColor }}>
               {label}
             </p>
-            <div className="flex items-center gap-1 shrink-0">
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={copyUrl} aria-label="Copy URL">
-                <Copy className="h-3 w-3 text-muted-foreground" />
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Button variant="ghost" size="icon-xs" onClick={copyUrl} aria-label="Copy URL">
+                <Copy className="size-2.5 text-muted-foreground" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={downloadAudio} aria-label="Download audio">
-                <Download className="h-3 w-3 text-muted-foreground" />
+              <Button variant="ghost" size="icon-xs" onClick={downloadAudio} aria-label="Download audio">
+                <Download className="size-2.5 text-muted-foreground" />
               </Button>
             </div>
           </div>
         )}
         <div
-          className={`flex items-center gap-2 sm:gap-3 rounded-lg border border-border/60 bg-muted/60 px-2 sm:px-3 transition-shadow duration-300 hover:shadow-[0_0_12px_-4px_var(--accent-glow)] ${label ? "py-2.5" : "py-1.5"}`}
+          className={`flex items-center gap-2 rounded-lg border border-border/60 bg-muted/60 px-2 transition-shadow duration-300 hover:shadow-[0_0_12px_-4px_var(--accent-glow)] ${hasLabel ? "py-2" : "py-1.5"}`}
           style={{ "--accent-glow": accentColor } as React.CSSProperties}
         >
           <AudioPlayerButton
             item={item}
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
+            size="icon-sm"
+            className="shrink-0"
           />
           <AudioPlayerProgress className="flex-1" rangeColor={accentColor} />
-          <div className="text-xs font-mono text-muted-foreground tabular-nums shrink-0 w-[4.5rem] text-right">
-            <AudioPlayerTime className="text-xs font-mono" />
+          <div className="text-[11px] font-mono text-muted-foreground tabular-nums shrink-0 text-right">
+            <AudioPlayerTime className="text-[11px] font-mono" />
             {" / "}
-            <AudioPlayerDuration className="text-xs font-mono" />
+            <AudioPlayerDuration className="text-[11px] font-mono" />
           </div>
         </div>
       </div>

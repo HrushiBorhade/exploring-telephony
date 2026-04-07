@@ -64,13 +64,13 @@ export function SectionCards({ captures }: { captures: Capture[] }) {
 
   return (
     <motion.div
-      className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card *:data-[slot=card]:shadow-xs dark:*:data-[slot=card]:bg-card"
+      className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2"
       initial="hidden"
       animate="visible"
       variants={stagger}
     >
       <motion.div variants={cardVariant}>
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20">
+        <Card className="bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20">
           <CardHeader>
             <CardDescription>Total Captures</CardDescription>
             <CardAction>
@@ -90,7 +90,7 @@ export function SectionCards({ captures }: { captures: Capture[] }) {
       </motion.div>
 
       <motion.div variants={cardVariant}>
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20">
+        <Card className="bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20">
           <CardHeader>
             <CardDescription>Hours Recorded</CardDescription>
             <CardTitle className="text-4xl font-semibold tabular-nums tracking-tight">
