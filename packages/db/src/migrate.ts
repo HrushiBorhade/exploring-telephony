@@ -18,10 +18,11 @@ const MIGRATION_LOCK_ID = 839741625;
  * In production (ECS), the migration files are bundled into the Docker image.
  * Locally, they're in the drizzle/ directory at the repo root.
  */
-export async function runMigrations() {
-  const url = process.env.DATABASE_URL;
+export async function runMigrations(databaseUrl?: string) {
+  const url = databaseUrl || process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL not set — cannot run migrations");
 
+  console.log(`[MIGRATE] Connecting to: ${url.replace(/\/\/.*@/, "//***@")}`);
   const migrationClient = postgres(url, { max: 1 });
   const db = drizzle(migrationClient);
 
