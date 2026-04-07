@@ -23,7 +23,7 @@ export async function runMigrations(databaseUrl?: string) {
   if (!url) throw new Error("DATABASE_URL not set — cannot run migrations");
 
   console.log(`[MIGRATE] Connecting to: ${url.replace(/\/\/.*@/, "//***@")}`);
-  const migrationClient = postgres(url, { max: 1 });
+  const migrationClient = postgres(url, { max: 1, ssl: "prefer" });
   const db = drizzle(migrationClient);
 
   const migrationsFolder = process.env.MIGRATIONS_DIR
