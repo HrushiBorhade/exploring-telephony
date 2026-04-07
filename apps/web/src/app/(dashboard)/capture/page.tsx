@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, LoaderCircle, Phone, AudioWaveform } from "lucide-react";
 import { motion } from "motion/react";
@@ -82,21 +82,28 @@ export default function CaptureDashboard() {
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
   const [phoneB, setPhoneB] = useState("");
-  const [language, setLanguage] = useState("en");
+  const language = "multi";
 
   const creating = createMutation.isPending;
+
+  useEffect(() => {
+    function handleOpen() { setOpen(true); }
+    window.addEventListener("open-new-capture", handleOpen);
+    return () => window.removeEventListener("open-new-capture", handleOpen);
+  }, []);
 
   const completedCount = captures.filter((c) => c.status === "completed").length;
 
   async function create() {
     try {
-      const result = await createMutation.mutateAsync({ name, phoneB, language });
+      const fullPhone = `${countryCode}${phoneB.replace(/\D/g, "")}`;
+      const result = await createMutation.mutateAsync({ name, phoneB: fullPhone, language });
       toast.success("Capture created");
       setOpen(false);
       setName("");
       setPhoneB("");
-      setLanguage("en");
       router.push(`/capture/${result.id}`);
     } catch {
       // onError in useCreateCapture already shows the toast
@@ -230,35 +237,37 @@ export default function CaptureDashboard() {
             </div>
             <div className="space-y-1.5">
               <label htmlFor="capture-phone-b" className="text-sm font-medium">Phone B</label>
-              <Input
-                id="capture-phone-b"
-                placeholder="+91XXXXXXXXXX"
-                value={phoneB}
-                onChange={(e) => setPhoneB(e.target.value)}
-                disabled={creating}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="capture-language" className="text-sm font-medium">Language</label>
-              <Select value={language} onValueChange={(v) => setLanguage(v ?? "en")} disabled={creating}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="hi">Hindi</SelectItem>
-                  <SelectItem value="kn">Kannada</SelectItem>
-                  <SelectItem value="te">Telugu</SelectItem>
-                  <SelectItem value="ta">Tamil</SelectItem>
-                  <SelectItem value="mr">Marathi</SelectItem>
-                  <SelectItem value="multi">Multi-lingual</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select value={countryCode} onValueChange={(v) => setCountryCode(v ?? "+91")} disabled={creating}>
+                  <SelectTrigger className="w-[90px] shrink-0 font-mono text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="+91">+91</SelectItem>
+                    <SelectItem value="+1">+1</SelectItem>
+                    <SelectItem value="+44">+44</SelectItem>
+                    <SelectItem value="+971">+971</SelectItem>
+                    <SelectItem value="+65">+65</SelectItem>
+                    <SelectItem value="+61">+61</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  id="capture-phone-b"
+                  type="tel"
+                  inputMode="numeric"
+                  placeholder="9876543210"
+                  maxLength={10}
+                  value={phoneB}
+                  onChange={(e) => setPhoneB(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  disabled={creating}
+                  className="font-mono tracking-widest"
+                />
+              </div>
             </div>
             <Button
               className="w-full"
               onClick={create}
-              disabled={!phoneB || creating}
+              disabled={phoneB.replace(/\D/g, "").length !== 10 || creating}
             >
               {creating ? (
                 <>
