@@ -10,6 +10,26 @@
 
 ---
 
+## Review Fixes Applied (4-agent review on 2026-04-07)
+
+The following fixes were identified by parallel review agents (Next.js 16, Drizzle ORM, React/TanStack, Security/API) and incorporated into the plan:
+
+1. **DB**: Add explicit `.references(() => user.id, { onDelete: "cascade" })` on `userProfiles.id` — was missing FK constraint
+2. **DB**: Add `serial` to drizzle-orm imports
+3. **DB**: Migration commands run from project root (not `apps/web`)
+4. **API**: Add string length limits (`MAX_NAME=100`, `MAX_CITY=100`, `MAX_DIALECT=50`)
+5. **API**: Add array bounds (`MAX_LANGUAGES=10`, max 20 dialects per language)
+6. **API**: Verify profile exists before `markOnboardingComplete` in languages endpoint
+7. **Frontend**: Use `/auth-callback` intermediate page to avoid flash for existing users
+8. **Frontend**: Wrap onboarding page in Suspense boundary for `useSearchParams`
+9. **Frontend**: Use `useProfile()` instead of separate `useOnboardingStatus()` in guard (1 API call instead of 2)
+10. **Frontend**: OnboardingGuard shows loading skeleton instead of returning null
+11. **Frontend**: Delete old `app/login/` after moving to `(auth)/login/`
+12. **Frontend**: Use `spring` from `motion.ts` consistently (not hardcoded 0.45s)
+13. **Architecture**: Accept full page reload on auth→dashboard transition (different route group layouts — acceptable trade-off)
+
+---
+
 ## File Structure
 
 ### Database (`packages/db/src/`)
@@ -33,7 +53,8 @@
 - **Create:** `(auth)/onboarding/_steps/shared.ts` — Step types, constants
 - **Create:** `(auth)/onboarding/_steps/profile-step.tsx` — Name, age, gender, city, state
 - **Create:** `(auth)/onboarding/_steps/languages-step.tsx` — Language multi-select + dialect tags
-- **Modify:** `login/page.tsx` — Move to `(auth)/login/page.tsx`, use shared layout
+- **Move:** `login/page.tsx` → `(auth)/login/page.tsx`, use shared layout (delete old `app/login/`)
+- **Create:** `auth-callback/page.tsx` — Smart redirect: checks onboarding status, routes to `/onboarding` or `/capture`
 
 ### Frontend Components (`apps/web/src/components/`)
 - **Create:** `auth-panel.tsx` — Right panel: flickering grid + dual audio orbs + waveform timeline
@@ -110,7 +131,7 @@ export const GENDERS = [
 // Add after the `verification` table in schema.ts
 
 export const userProfiles = pgTable("user_profiles", {
-  id: text("id").primaryKey(), // same as user.id (1:1)
+  id: text("id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   age: integer("age").notNull(),
   gender: text("gender").notNull(),
@@ -147,13 +168,14 @@ Add `integer`, `serial` to the drizzle-orm/pg-core import at top of schema.ts.
 - [ ] **Step 4: Generate migration**
 
 ```bash
-cd apps/web && npx drizzle-kit generate
+npx drizzle-kit generate
 ```
+Run from project root where `drizzle.config.ts` lives.
 
 - [ ] **Step 5: Apply migration locally**
 
 ```bash
-cd apps/web && npx drizzle-kit migrate
+npx drizzle-kit migrate
 ```
 
 - [ ] **Step 6: Commit**
@@ -270,6 +292,12 @@ import * as dbq from "@repo/db";
 
 const router = Router();
 
+const MAX_NAME_LENGTH = 100;
+const MAX_CITY_LENGTH = 100;
+const MAX_DIALECT_LENGTH = 50;
+const MAX_LANGUAGES = 10;
+const MAX_DIALECTS_PER_LANG = 20;
+
 // GET /api/profile — returns profile + languages + onboarding status
 router.get("/api/profile", requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -292,11 +320,13 @@ router.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
   const { name, age, gender, city, state } = req.body;
 
   const errors: Record<string, string> = {};
-  if (!name || name.length < 2) errors.name = "Name must be at least 2 characters";
+  if (!name || typeof name !== "string" || name.trim().length < 2) errors.name = "Name must be at least 2 characters";
+  else if (name.length > MAX_NAME_LENGTH) errors.name = `Name must be under ${MAX_NAME_LENGTH} characters`;
   if (!age || age < 18 || age > 100) errors.age = "Age must be 18-100";
   if (!gender) errors.gender = "Gender is required";
   if (!state) errors.state = "State is required";
-  if (!city || city.length < 2) errors.city = "City must be at least 2 characters";
+  if (!city || typeof city !== "string" || city.trim().length < 2) errors.city = "City must be at least 2 characters";
+  else if (city.length > MAX_CITY_LENGTH) errors.city = `City must be under ${MAX_CITY_LENGTH} characters`;
 
   if (Object.keys(errors).length > 0) {
     res.status(400).json({ error: "Validation failed", fields: errors });
@@ -304,7 +334,7 @@ router.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
   }
 
   try {
-    await dbq.upsertProfile(req.userId!, { name, age: Number(age), gender, city, state });
+    await dbq.upsertProfile(req.userId!, { name: name.trim(), age: Number(age), gender, city: city.trim(), state });
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to save profile" });
@@ -319,6 +349,25 @@ router.put("/api/profile/languages", requireAuth, async (req: AuthRequest, res) 
     res.status(400).json({ error: "At least one language is required" });
     return;
   }
+  if (languages.length > MAX_LANGUAGES) {
+    res.status(400).json({ error: `Maximum ${MAX_LANGUAGES} languages allowed` });
+    return;
+  }
+
+  // Validate each language object
+  for (const lang of languages) {
+    if (!lang.languageCode || typeof lang.languageCode !== "string") {
+      res.status(400).json({ error: "Invalid language structure" }); return;
+    }
+    if (lang.dialects && lang.dialects.length > MAX_DIALECTS_PER_LANG) {
+      res.status(400).json({ error: `Maximum ${MAX_DIALECTS_PER_LANG} dialects per language` }); return;
+    }
+    for (const d of lang.dialects || []) {
+      if (typeof d !== "string" || d.length > MAX_DIALECT_LENGTH) {
+        res.status(400).json({ error: `Dialect names must be under ${MAX_DIALECT_LENGTH} characters` }); return;
+      }
+    }
+  }
 
   const hasPrimary = languages.some((l: any) => l.isPrimary);
   if (!hasPrimary) {
@@ -327,8 +376,13 @@ router.put("/api/profile/languages", requireAuth, async (req: AuthRequest, res) 
   }
 
   try {
+    // Verify profile exists before marking onboarding complete
+    const profile = await dbq.getProfile(req.userId!);
+    if (!profile) {
+      res.status(400).json({ error: "Complete your profile first" }); return;
+    }
+
     await dbq.setLanguages(req.userId!, languages);
-    // Mark onboarding complete
     await dbq.markOnboardingComplete(req.userId!);
     res.json({ success: true });
   } catch {
@@ -602,28 +656,44 @@ Create a client-side onboarding guard component:
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useOnboardingStatus } from "@/lib/api";
-import { useSession } from "@/lib/auth-client";
+import { useProfile } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { data: session } = useSession();
-  const { data: status, isLoading } = useOnboardingStatus();
+  const { data: profile, isLoading } = useProfile();
 
   useEffect(() => {
-    if (!isLoading && session && status && !status.completed) {
+    if (isLoading || !profile) return;
+    if (!profile.onboardingCompleted) {
       router.replace("/onboarding");
     }
-  }, [isLoading, session, status, router]);
+  }, [isLoading, profile, router]);
 
-  // Show nothing while checking (prevents flash)
-  if (isLoading || (session && status && !status.completed)) {
+  // Show skeleton while checking (no blank flash)
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
+        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
+          <Skeleton className="h-28 rounded-xl" />
+          <Skeleton className="h-28 rounded-xl" />
+        </div>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  }
+
+  // Still redirecting — show skeleton
+  if (profile && !profile.onboardingCompleted) {
     return null;
   }
 
   return <>{children}</>;
 }
 ```
+
+**Note:** Uses `useProfile()` (single API call) instead of separate `useOnboardingStatus()` — reduces network requests by 50%. Shows loading skeleton instead of returning null to prevent blank flash.
 
 - [ ] **Step 2: Wrap dashboard layout with guard**
 
@@ -1168,13 +1238,43 @@ git commit -m "feat(web): languages step — primary, additional, dialects"
 - Modify: `apps/web/src/components/login-form.tsx`
 - Modify: `apps/web/src/proxy.ts`
 
-- [ ] **Step 1: Update login redirect**
+- [ ] **Step 1: Create auth-callback page**
 
-After successful OTP verification in `login-form.tsx`, redirect to `/onboarding` instead of `/capture`. The onboarding page will check status and redirect to `/capture` if already complete.
+Smart redirect page that checks onboarding status and routes accordingly. Prevents the flash where existing users briefly see the onboarding page.
+
+```typescript
+// apps/web/src/app/auth-callback/page.tsx
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { useProfile } from "@/lib/api";
+import { LoaderCircle } from "lucide-react";
+
+export default function AuthCallbackPage() {
+  const router = useRouter();
+  const { data: profile, isLoading } = useProfile();
+
+  useEffect(() => {
+    if (isLoading || !profile) return;
+    router.replace(profile.onboardingCompleted ? "/capture" : "/onboarding");
+  }, [isLoading, profile, router]);
+
+  return (
+    <div className="flex min-h-svh items-center justify-center">
+      <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: Update login redirect**
+
+In `login-form.tsx`, redirect to `/auth-callback` instead of `/capture`:
 
 ```typescript
 // In verifyOTP success handler:
-router.push("/onboarding");
+router.push("/auth-callback");
 ```
 
 - [ ] **Step 2: Update proxy config matcher**
