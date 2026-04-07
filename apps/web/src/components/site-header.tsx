@@ -24,7 +24,7 @@ export function SiteHeader() {
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mx-2 h-4" />
-        <Breadcrumb>
+        <Breadcrumb className="min-w-0 flex-1">
           <BreadcrumbList>
             <BreadcrumbItem>
               {captureId ? (
@@ -39,7 +39,7 @@ export function SiteHeader() {
               <>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbPage className="font-mono text-xs">
+                  <BreadcrumbPage className="font-mono text-xs max-w-[120px] sm:max-w-[200px] truncate">
                     {captureId}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
@@ -47,7 +47,7 @@ export function SiteHeader() {
             )}
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <ThemeToggle />
         </div>
       </div>

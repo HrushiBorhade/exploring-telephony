@@ -187,7 +187,7 @@ export default function CaptureDashboard() {
                         animationDelay: `${i * 40}ms`,
                       }}
                     >
-                      <TableCell className="pl-6 font-medium">{c.name || "\u2014"}</TableCell>
+                      <TableCell className="pl-6 font-medium max-w-[180px] truncate">{c.name || "\u2014"}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
                         {c.phoneA} / {c.phoneB}
                       </TableCell>
@@ -230,6 +230,7 @@ export default function CaptureDashboard() {
               <Input
                 id="capture-name"
                 placeholder="e.g. Hindi Customer Call"
+                maxLength={50}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={creating}
