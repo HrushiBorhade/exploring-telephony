@@ -34,19 +34,21 @@ function FluidOrb({ size = 100, speed = 8, delay = 0 }: { size?: number; speed?:
   );
 }
 
+// Pre-computed waveform heights (avoids hydration mismatch from floating point)
+const WAVEFORM_HEIGHTS = Array.from({ length: 40 }, (_, i) =>
+  Math.round(Math.max(10, 20 + Math.sin(i * 0.5) * 30 + Math.cos(i * 0.8) * 20))
+);
+
 function WaveformDisplay() {
   return (
     <div className="flex items-end gap-[1.5px] h-8 px-3">
-      {Array.from({ length: 40 }).map((_, i) => {
-        const h = 20 + Math.sin(i * 0.5) * 30 + Math.cos(i * 0.8) * 20;
-        return (
-          <div
-            key={i}
-            className="w-[2px] rounded-full bg-muted-foreground/30"
-            style={{ height: `${Math.max(10, h)}%` }}
-          />
-        );
-      })}
+      {WAVEFORM_HEIGHTS.map((h, i) => (
+        <div
+          key={i}
+          className="w-[2px] rounded-full bg-muted-foreground/30"
+          style={{ height: `${h}%` }}
+        />
+      ))}
     </div>
   );
 }
@@ -55,9 +57,9 @@ function MockAudioPlayer() {
   return (
     <motion.div
       className="w-64 rounded-xl border border-border/30 bg-card/80 backdrop-blur-sm p-4 space-y-3 shadow-lg"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, delay: 0.8 }}
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", duration: 0.6, delay: 0.7, bounce: 0 }}
     >
       <div>
         <p className="text-xs font-medium truncate">capture-2026-04-07</p>
@@ -109,27 +111,34 @@ export function AuthPanel() {
       {/* Radial fade for depth */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,var(--color-background)_80%)]" />
 
-      {/* Content */}
+      {/* Content — staggered entrance */}
       <div className="absolute inset-0 flex items-center justify-center">
-        <motion.div
-          className="flex flex-col items-center gap-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-        >
+        <div className="flex flex-col items-center gap-8">
+          {/* Orbs stagger in from sides */}
           <div className="flex items-center gap-6">
-            <div className="flex flex-col items-center gap-2">
+            <motion.div
+              className="flex flex-col items-center gap-2"
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ type: "spring", duration: 0.7, delay: 0.2, bounce: 0.1 }}
+            >
               <FluidOrb size={100} speed={8} delay={0} />
               <span className="text-[10px] font-mono text-muted-foreground">Contributor A</span>
-            </div>
-            <div className="flex flex-col items-center gap-2">
+            </motion.div>
+            <motion.div
+              className="flex flex-col items-center gap-2"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ type: "spring", duration: 0.7, delay: 0.4, bounce: 0.1 }}
+            >
               <FluidOrb size={100} speed={12} delay={0.5} />
               <span className="text-[10px] font-mono text-muted-foreground">Contributor B</span>
-            </div>
+            </motion.div>
           </div>
 
+          {/* Player card rises up after orbs */}
           <MockAudioPlayer />
-        </motion.div>
+        </div>
       </div>
     </div>
   );
