@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { PhoneCallIcon, ClockIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NumberTicker } from "@/components/ui/number-ticker";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { useCaptureStats } from "@/lib/api";
 
@@ -26,6 +27,14 @@ function fmtDuration(s: number) {
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function fmtHoursFromSeconds(n: number) {
+  const totalSeconds = Math.round(n);
+  const h = totalSeconds / 3600;
+  if (h >= 1) return `${h.toFixed(1)}h`;
+  const m = Math.floor(totalSeconds / 60);
+  return `${m}m`;
 }
 
 const stagger = pageStagger;
@@ -79,8 +88,8 @@ export function SectionCards() {
                 {stats.thisWeek} this week
               </Badge>
             </CardAction>
-            <CardTitle className="text-4xl font-semibold tabular-nums tracking-tight">
-              {stats.total}
+            <CardTitle className="text-4xl font-semibold tracking-tight">
+              <NumberTicker value={stats.total} />
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm">
@@ -96,8 +105,15 @@ export function SectionCards() {
         <Card className="bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20">
           <CardHeader>
             <CardDescription>Hours Recorded</CardDescription>
-            <CardTitle className="text-4xl font-semibold tabular-nums tracking-tight">
-              {stats.totalDuration > 0 ? fmtHours(stats.totalDuration) : "\u2014"}
+            <CardTitle className="text-4xl font-semibold tracking-tight">
+              {stats.totalDuration > 0 ? (
+                <NumberTicker
+                  value={stats.totalDuration}
+                  format={fmtHoursFromSeconds}
+                />
+              ) : (
+                "\u2014"
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm">
