@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Voice Capture",
+  title: "Annote ASR",
   description: "Per-speaker audio capture for ASR datasets",
 };
 

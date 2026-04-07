@@ -25,7 +25,7 @@ export default function LoginPage() {
             <div className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <AudioWaveformIcon className="size-4" />
             </div>
-            Voice Capture
+            Annote ASR
           </a>
         </motion.div>
         <div className="flex flex-1 items-center justify-center">
@@ -63,7 +63,7 @@ export default function LoginPage() {
             </div>
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground tracking-[0.2em] uppercase">
-                Voice Capture
+                Annote ASR
               </p>
               <p className="text-sm text-muted-foreground/70 max-w-[260px] mx-auto leading-relaxed">
                 Per-speaker audio capture for ASR datasets
