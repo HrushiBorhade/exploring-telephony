@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Play, SkipBack, SkipForward } from "lucide-react";
+import { Play } from "lucide-react";
 
 function FluidOrb({ size = 100, speed = 8, delay = 0 }: { size?: number; speed?: number; delay?: number }) {
   return (
@@ -34,53 +34,32 @@ function FluidOrb({ size = 100, speed = 8, delay = 0 }: { size?: number; speed?:
   );
 }
 
-// Pre-computed waveform heights (avoids hydration mismatch from floating point)
-const WAVEFORM_HEIGHTS = Array.from({ length: 40 }, (_, i) =>
-  Math.round(Math.max(10, 20 + Math.sin(i * 0.5) * 30 + Math.cos(i * 0.8) * 20))
-);
-
-function WaveformDisplay() {
-  return (
-    <div className="flex items-end gap-[1.5px] h-8 px-3">
-      {WAVEFORM_HEIGHTS.map((h, i) => (
-        <div
-          key={i}
-          className="w-[2px] rounded-full bg-muted-foreground/30"
-          style={{ height: `${h}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
 function MockAudioPlayer() {
   return (
     <motion.div
-      className="w-64 rounded-xl border border-border/30 bg-card/80 backdrop-blur-sm p-4 space-y-3 shadow-lg"
+      className="w-72 space-y-1.5"
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", duration: 0.6, delay: 0.7, bounce: 0 }}
     >
-      <div>
-        <p className="text-xs font-medium truncate">capture-2026-04-07</p>
-        <p className="text-[10px] text-muted-foreground">Contributor A · Hindi</p>
+      {/* Label — matches our WaveformPlayer label style */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium" style={{ color: "#3ea88e" }}>
+          Contributor A — Hindi
+        </p>
       </div>
-      <div className="rounded-lg bg-muted/50 py-2">
-        <WaveformDisplay />
-      </div>
-      <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
-        <span>0:14</span>
+      {/* Player bar — matches our WaveformPlayer style */}
+      <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/60 px-2 py-2">
+        <div className="size-7 rounded-md flex items-center justify-center shrink-0">
+          <Play className="size-3 text-foreground ml-0.5" />
+        </div>
+        {/* Progress bar */}
         <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
           <div className="h-full w-[35%] rounded-full bg-primary/60" />
         </div>
-        <span>0:41</span>
-      </div>
-      <div className="flex items-center justify-center gap-4">
-        <SkipBack className="size-3.5 text-muted-foreground" />
-        <div className="size-8 rounded-full border border-border/50 flex items-center justify-center">
-          <Play className="size-3.5 text-foreground ml-0.5" />
+        <div className="text-[11px] font-mono text-muted-foreground tabular-nums shrink-0">
+          0:14 / 0:41
         </div>
-        <SkipForward className="size-3.5 text-muted-foreground" />
       </div>
     </motion.div>
   );
