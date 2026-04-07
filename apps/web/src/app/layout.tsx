@@ -35,8 +35,8 @@ export default function RootLayout({
           <TooltipProvider>
             {children}
           </TooltipProvider>
+          <Toaster />
         </QueryProvider>
-        <Toaster />
       </body>
     </html>
   );

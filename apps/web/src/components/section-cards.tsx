@@ -9,22 +9,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PhoneCallIcon, CircleCheckIcon, ClockIcon } from "lucide-react";
-import { useCaptures } from "@/lib/api";
+import type { Capture } from "@/lib/types";
 
-export function SectionCards() {
-  const { data: captures = [] } = useCaptures();
+function fmtDuration(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
 
+export function SectionCards({ captures }: { captures: Capture[] }) {
   const total = captures.length;
   const live = captures.filter((c) => c.status === "active" || c.status === "calling").length;
   const completed = captures.filter((c) => c.status === "completed").length;
   const totalDuration = captures.reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
   const avgDuration = completed > 0 ? Math.round(totalDuration / completed) : 0;
-
-  const fmtDuration = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${String(sec).padStart(2, "0")}`;
-  };
 
   return (
     <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">

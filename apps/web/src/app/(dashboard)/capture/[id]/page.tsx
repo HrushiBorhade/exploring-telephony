@@ -125,8 +125,8 @@ function UtteranceList({ utterances, color }: { utterances: Utterance[]; color: 
 
   return (
     <div className="space-y-px pt-2">
-      {utterances.map((u) => (
-        <UtteranceRow key={`${u.start}-${u.end}`} u={u} color={color} />
+      {utterances.map((u, i) => (
+        <UtteranceRow key={`${i}-${u.start}-${u.end}`} u={u} color={color} />
       ))}
     </div>
   );
@@ -145,6 +145,23 @@ export default function CaptureDetailPage() {
   const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id), [capture?.transcriptA, id]);
   const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id), [capture?.transcriptB, id]);
   const hasUtterances = utterancesA.length > 0 || utterancesB.length > 0;
+
+  const recordingUrl = useMemo(
+    () => capture?.recordingUrl ? proxyAudioUrl(capture.recordingUrl, id) : null,
+    [capture?.recordingUrl, id]
+  );
+  const recordingUrlA = useMemo(
+    () => capture?.recordingUrlA ? proxyAudioUrl(capture.recordingUrlA, id) : null,
+    [capture?.recordingUrlA, id]
+  );
+  const recordingUrlB = useMemo(
+    () => capture?.recordingUrlB ? proxyAudioUrl(capture.recordingUrlB, id) : null,
+    [capture?.recordingUrlB, id]
+  );
+  const datasetCsvProxyUrl = useMemo(
+    () => capture?.datasetCsvUrl ? proxyAudioUrl(capture.datasetCsvUrl, id) : null,
+    [capture?.datasetCsvUrl, id]
+  );
 
   if (isLoading && !capture) return <DetailSkeleton />;
 
@@ -188,8 +205,8 @@ export default function CaptureDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {isCompleted && capture.datasetCsvUrl && (
-            <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          {isCompleted && datasetCsvProxyUrl && (
+            <a href={datasetCsvProxyUrl} download className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <Download className="size-3.5" />
               CSV
             </a>
@@ -282,9 +299,9 @@ export default function CaptureDetailPage() {
           {/* ── Completed — Recordings + Utterances ── */}
           {isCompleted && (
             <>
-              {capture.recordingUrl && (
+              {recordingUrl && (
                 <WaveformPlayer
-                  url={proxyAudioUrl(capture.recordingUrl, id)}
+                  url={recordingUrl}
                   label="Mixed \u2014 both participants"
                   accentColor="#a1a1aa"
                   onDurationLoaded={setAudioDuration}
@@ -292,16 +309,16 @@ export default function CaptureDetailPage() {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {capture.recordingUrlA && (
+                {recordingUrlA && (
                   <WaveformPlayer
-                    url={proxyAudioUrl(capture.recordingUrlA, id)}
+                    url={recordingUrlA}
                     label={`A \u2014 ${capture.phoneA}`}
                     accentColor={participantColor.a}
                   />
                 )}
-                {capture.recordingUrlB && (
+                {recordingUrlB && (
                   <WaveformPlayer
-                    url={proxyAudioUrl(capture.recordingUrlB, id)}
+                    url={recordingUrlB}
                     label={`B \u2014 ${capture.phoneB}`}
                     accentColor={participantColor.b}
                   />
@@ -309,8 +326,8 @@ export default function CaptureDetailPage() {
               </div>
 
               {/* Mobile CSV download (hidden on desktop where it's in action bar) */}
-              {capture.datasetCsvUrl && (
-                <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="sm:hidden inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              {datasetCsvProxyUrl && (
+                <a href={datasetCsvProxyUrl} download className="sm:hidden inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Download className="size-3.5" />
                   Download CSV
                 </a>
@@ -322,8 +339,8 @@ export default function CaptureDetailPage() {
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
                       Utterances
                     </p>
-                    {capture.datasetCsvUrl && (
-                      <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                    {datasetCsvProxyUrl && (
+                      <a href={datasetCsvProxyUrl} download className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
                         <Download className="size-3" />
                         CSV
                       </a>

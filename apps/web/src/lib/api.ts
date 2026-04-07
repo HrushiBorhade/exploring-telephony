@@ -63,6 +63,7 @@ export function useCaptures() {
   return useQuery({
     queryKey: captureKeys.all,
     queryFn: () => fetchJson<Capture[]>(`${API}/api/captures`),
+    staleTime: 30_000,
   });
 }
 
@@ -70,6 +71,7 @@ export function useCapture(id: string) {
   return useQuery({
     queryKey: captureKeys.detail(id),
     queryFn: () => fetchJson<Capture>(`${API}/api/captures/${id}`),
+    refetchOnWindowFocus: false,
     // Poll faster when call is active; keep polling on "completed" until all recordings arrive
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -94,10 +96,30 @@ export function useCreateCapture() {
   return useMutation({
     mutationFn: (data: { name: string; phoneB: string; language: string }) =>
       postJson<Capture>(`${API}/api/captures`, data),
+    onMutate: async (newCapture) => {
+      await queryClient.cancelQueries({ queryKey: captureKeys.all });
+      const prev = queryClient.getQueryData<Capture[]>(captureKeys.all);
+      if (prev) {
+        queryClient.setQueryData(captureKeys.all, [
+          {
+            id: `temp-${Date.now()}`,
+            status: "created" as const,
+            name: newCapture.name,
+            phoneA: "",
+            phoneB: newCapture.phoneB,
+            language: newCapture.language,
+            createdAt: new Date().toISOString(),
+          },
+          ...prev,
+        ]);
+      }
+      return { prev };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: captureKeys.all });
     },
-    onError: (err) => {
+    onError: (err, _, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(captureKeys.all, ctx.prev);
       toast.error(err.message);
     },
   });
