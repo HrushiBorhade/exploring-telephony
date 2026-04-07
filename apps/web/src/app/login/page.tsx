@@ -55,7 +55,7 @@ export default function LoginPage() {
         {/* Content */}
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div
-            className="text-center space-y-10 px-8"
+            className="text-center px-8"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
@@ -86,14 +86,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="space-y-3">
-              <p className="text-sm font-heading font-semibold text-foreground/80 tracking-[0.15em] uppercase">
-                Annote ASR
-              </p>
-              <p className="text-sm text-muted-foreground max-w-[240px] mx-auto leading-relaxed">
-                Per-speaker audio capture for ASR datasets
-              </p>
-            </div>
           </motion.div>
         </div>
       </div>

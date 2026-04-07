@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "motion/react";
+import { staggerContainer, staggerChild } from "@/lib/motion";
 import { NavMain } from "@/components/nav-main";
 import { NavSecondary } from "@/components/nav-secondary";
 import { NavUser } from "@/components/nav-user";
@@ -56,36 +58,59 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              className="data-[slot=sidebar-menu-button]:p-1.5!"
-              render={<a href="/capture" />}
+            <motion.div
+              initial="enter"
+              animate="center"
+              variants={staggerChild}
             >
-              <AudioWaveformIcon className="size-5!" />
-              <span className="text-base font-semibold font-heading">Annote ASR</span>
-            </SidebarMenuButton>
+              <SidebarMenuButton
+                className="data-[slot=sidebar-menu-button]:p-1.5!"
+                render={<a href="/capture" />}
+              >
+                <AudioWaveformIcon className="size-5!" />
+                <span className="text-base font-semibold font-heading">Annote ASR</span>
+              </SidebarMenuButton>
+            </motion.div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <Button
-            size="sm"
-            className="w-full gap-1.5"
-            onClick={() => {
-              router.push("/capture");
-              // Dispatch a custom event that the capture page listens for
-              window.dispatchEvent(new CustomEvent("open-new-capture"));
-            }}
-          >
-            <PlusIcon className="size-4" />
-            New Capture
-          </Button>
-        </SidebarGroup>
-        <NavMain items={navMain} />
-        <NavSecondary items={navSecondary} className="mt-auto" />
+        <motion.div
+          initial="enter"
+          animate="center"
+          variants={staggerContainer}
+        >
+          <motion.div variants={staggerChild}>
+            <SidebarGroup>
+              <Button
+                size="sm"
+                className="w-full gap-1.5"
+                onClick={() => {
+                  router.push("/capture");
+                  window.dispatchEvent(new CustomEvent("open-new-capture"));
+                }}
+              >
+                <PlusIcon className="size-4" />
+                New Capture
+              </Button>
+            </SidebarGroup>
+          </motion.div>
+          <motion.div variants={staggerChild}>
+            <NavMain items={navMain} />
+          </motion.div>
+          <motion.div variants={staggerChild} className="mt-auto">
+            <NavSecondary items={navSecondary} />
+          </motion.div>
+        </motion.div>
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user} />
+        <motion.div
+          initial="enter"
+          animate="center"
+          variants={staggerChild}
+        >
+          <NavUser user={user} />
+        </motion.div>
       </SidebarFooter>
     </Sidebar>
   );
