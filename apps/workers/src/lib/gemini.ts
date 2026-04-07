@@ -22,7 +22,7 @@ export async function transcribeWithGemini(
   logger.info({ sizeKB: (audioBuffer.length / 1024).toFixed(1), mimeType }, "[GEMINI] Starting transcription");
 
   const response = await genai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-pro",
     contents: {
       parts: [
         {
