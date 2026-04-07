@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Capture, CaptureStats, PaginatedResponse } from "./types";
+import type { Capture, CaptureStats, PaginatedResponse, ProfileResponse } from "./types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -33,6 +33,11 @@ export const captureKeys = {
   detail: (id: string) => ["captures", id] as const,
 };
 
+export const profileKeys = {
+  profile: ["profile"] as const,
+  onboardingStatus: ["profile", "onboarding-status"] as const,
+};
+
 // ── Fetchers ────────────────────────────────────────────────────────
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -44,9 +49,9 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json();
 }
 
-async function postJson<T>(url: string, body?: unknown): Promise<T> {
+async function postJson<T>(url: string, body?: unknown, method = "POST"): Promise<T> {
   const res = await fetch(url, {
-    method: "POST",
+    method,
     credentials: "include",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -101,6 +106,41 @@ export function useCapture(id: string) {
         return (allRecordings && allTranscripts) ? false : 2_000;
       }
       return 5_000;
+    },
+  });
+}
+
+export function useProfile() {
+  return useQuery({
+    queryKey: profileKeys.profile,
+    queryFn: () => fetchJson<ProfileResponse>(`${API}/api/profile`),
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; age: number; gender: string; city: string; state: string }) =>
+      postJson<{ success: boolean }>(`${API}/api/profile`, data, "PUT"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: profileKeys.profile });
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+}
+
+export function useUpdateLanguages() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { languages: { languageCode: string; languageName: string; isPrimary: boolean; dialects: string[] }[] }) =>
+      postJson<{ success: boolean }>(`${API}/api/profile/languages`, data, "PUT"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: profileKeys.profile });
+    },
+    onError: (err) => {
+      toast.error(err.message);
     },
   });
 }
