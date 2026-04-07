@@ -142,3 +142,66 @@ export async function getSessionByToken(token: string) {
     .limit(1);
   return row ?? null;
 }
+
+// Profile queries
+
+export async function getProfile(userId: string) {
+  return db.query.userProfiles.findFirst({
+    where: eq(schema.userProfiles.id, userId),
+  });
+}
+
+export async function upsertProfile(
+  userId: string,
+  data: { name: string; age: number; gender: string; city: string; state: string },
+) {
+  await db
+    .insert(schema.userProfiles)
+    .values({ id: userId, ...data })
+    .onConflictDoUpdate({
+      target: schema.userProfiles.id,
+      set: { ...data, updatedAt: new Date() },
+    });
+}
+
+export async function markOnboardingComplete(userId: string) {
+  await db
+    .update(schema.userProfiles)
+    .set({ onboardingCompleted: true, updatedAt: new Date() })
+    .where(eq(schema.userProfiles.id, userId));
+}
+
+export async function isOnboarded(userId: string): Promise<boolean> {
+  const profile = await db.query.userProfiles.findFirst({
+    where: and(
+      eq(schema.userProfiles.id, userId),
+      eq(schema.userProfiles.onboardingCompleted, true),
+    ),
+    columns: { id: true },
+  });
+  return !!profile;
+}
+
+// Language queries
+
+export async function getLanguages(userId: string) {
+  return db
+    .select()
+    .from(schema.userLanguages)
+    .where(eq(schema.userLanguages.userId, userId))
+    .orderBy(desc(schema.userLanguages.isPrimary));
+}
+
+export async function setLanguages(
+  userId: string,
+  languages: { languageCode: string; languageName: string; isPrimary: boolean; dialects: string[] }[],
+) {
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.userLanguages).where(eq(schema.userLanguages.userId, userId));
+    if (languages.length > 0) {
+      await tx.insert(schema.userLanguages).values(
+        languages.map((l) => ({ userId, ...l })),
+      );
+    }
+  });
+}
