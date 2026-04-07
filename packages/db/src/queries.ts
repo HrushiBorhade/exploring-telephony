@@ -1,4 +1,4 @@
-import { eq, and, gt, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, gt, gte, desc, sql, inArray, count, sum } from "drizzle-orm";
 import { db } from "./index";
 import * as schema from "./schema";
 
@@ -41,6 +41,36 @@ export async function listCapturesByUser(
     .where(and(...conditions))
     .orderBy(desc(schema.captures.createdAt))
     .limit(limit + 1); // fetch one extra to determine hasMore
+}
+
+export async function getCaptureStats(userId: string) {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const [totals] = await db
+    .select({
+      total: count(),
+      completed: count(sql`CASE WHEN ${schema.captures.status} = 'completed' THEN 1 END`),
+      totalDuration: sum(schema.captures.durationSeconds),
+    })
+    .from(schema.captures)
+    .where(eq(schema.captures.userId, userId));
+
+  const [weekly] = await db
+    .select({ thisWeek: count() })
+    .from(schema.captures)
+    .where(
+      and(
+        eq(schema.captures.userId, userId),
+        gte(schema.captures.createdAt, sevenDaysAgo),
+      )
+    );
+
+  return {
+    total: totals?.total ?? 0,
+    completed: Number(totals?.completed ?? 0),
+    totalDuration: Number(totals?.totalDuration ?? 0),
+    thisWeek: weekly?.thisWeek ?? 0,
+  };
 }
 
 export async function findCaptureByRoomName(roomName: string) {

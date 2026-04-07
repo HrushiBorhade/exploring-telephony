@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Capture, PaginatedResponse } from "./types";
+import type { Capture, CaptureStats, PaginatedResponse } from "./types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -29,6 +29,7 @@ export function proxyAudioUrl(s3Url: string, captureId: string): string {
 
 export const captureKeys = {
   all: ["captures"] as const,
+  stats: ["captures", "stats"] as const,
   detail: (id: string) => ["captures", id] as const,
 };
 
@@ -75,6 +76,14 @@ export function useCaptures() {
   });
 }
 
+export function useCaptureStats() {
+  return useQuery({
+    queryKey: captureKeys.stats,
+    queryFn: () => fetchJson<CaptureStats>(`${API}/api/captures/stats`),
+    staleTime: 30_000,
+  });
+}
+
 export function useCapture(id: string) {
   return useQuery({
     queryKey: captureKeys.detail(id),
@@ -106,6 +115,7 @@ export function useCreateCapture() {
       postJson<Capture>(`${API}/api/captures`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: captureKeys.all });
+      queryClient.invalidateQueries({ queryKey: captureKeys.stats });
     },
     onError: (err) => {
       toast.error(err.message);

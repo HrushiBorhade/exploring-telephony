@@ -9,10 +9,11 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUpIcon, TrendingDownIcon, PhoneCallIcon, ClockIcon } from "lucide-react";
+import { PhoneCallIcon, ClockIcon } from "lucide-react";
 import { motion } from "motion/react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
-import type { Capture } from "@/lib/types";
+import { useCaptureStats } from "@/lib/api";
 
 function fmtHours(totalSeconds: number) {
   const h = totalSeconds / 3600;
@@ -30,37 +31,37 @@ function fmtDuration(s: number) {
 const stagger = pageStagger;
 const cardVariant = pageFadeUp;
 
-function TrendBadge({ value, label }: { value: number; label?: string }) {
-  if (value === 0 && !label) return null;
-  if (label) {
-    return (
-      <Badge variant="outline" className="text-xs gap-1 text-muted-foreground border-border">
-        {label}
-      </Badge>
-    );
-  }
-  const isUp = value > 0;
+function CardSkeleton() {
   return (
-    <Badge variant="outline" className={`text-xs gap-1 ${isUp ? "text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-800" : "text-red-700 border-red-300 dark:text-red-400 dark:border-red-800"}`}>
-      {isUp ? <TrendingUpIcon className="size-3" /> : <TrendingDownIcon className="size-3" />}
-      {isUp ? "+" : ""}{value}%
-    </Badge>
+    <Card className="bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card">
+      <CardHeader>
+        <Skeleton className="h-4 w-24 skeleton-shimmer" />
+        <Skeleton className="h-9 w-16 skeleton-shimmer" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-4 w-32 skeleton-shimmer" />
+      </CardContent>
+    </Card>
   );
 }
 
-export function SectionCards({ captures }: { captures: Capture[] }) {
-  const total = captures.length;
-  const completed = captures.filter((c) => c.status === "completed").length;
-  const totalDuration = captures.reduce((sum, c) => sum + (c.durationSeconds ?? 0), 0);
-  const avgDuration = completed > 0 ? Math.round(totalDuration / completed) : 0;
-  const now = Date.now();
-  const weekMs = 7 * 24 * 60 * 60 * 1000;
-  const thisWeek = captures.filter((c) => now - new Date(c.createdAt).getTime() < weekMs).length;
-  const lastWeek = captures.filter((c) => {
-    const age = now - new Date(c.createdAt).getTime();
-    return age >= weekMs && age < weekMs * 2;
-  }).length;
-  const weekTrend = lastWeek > 0 ? Math.round(((thisWeek - lastWeek) / lastWeek) * 100) : 0;
+export function SectionCards() {
+  const { data: stats, isLoading, error } = useCaptureStats();
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2">
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return null;
+  }
+
+  const avgDuration = stats.completed > 0 ? Math.round(stats.totalDuration / stats.completed) : 0;
 
   return (
     <motion.div
@@ -74,16 +75,18 @@ export function SectionCards({ captures }: { captures: Capture[] }) {
           <CardHeader>
             <CardDescription>Total Captures</CardDescription>
             <CardAction>
-              <TrendBadge value={weekTrend} label={weekTrend === 0 ? `${thisWeek} this week` : undefined} />
+              <Badge variant="outline" className="text-xs gap-1 text-muted-foreground border-border">
+                {stats.thisWeek} this week
+              </Badge>
             </CardAction>
             <CardTitle className="text-4xl font-semibold tabular-nums tracking-tight">
-              {total}
+              {stats.total}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm">
             <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
               <PhoneCallIcon className="size-3.5" />
-              {completed} completed
+              {stats.completed} completed
             </div>
           </CardContent>
         </Card>
@@ -94,7 +97,7 @@ export function SectionCards({ captures }: { captures: Capture[] }) {
           <CardHeader>
             <CardDescription>Hours Recorded</CardDescription>
             <CardTitle className="text-4xl font-semibold tabular-nums tracking-tight">
-              {totalDuration > 0 ? fmtHours(totalDuration) : "\u2014"}
+              {stats.totalDuration > 0 ? fmtHours(stats.totalDuration) : "\u2014"}
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm">

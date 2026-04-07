@@ -48,6 +48,16 @@ router.get("/api/captures", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+// Capture stats (aggregate — not dependent on pagination)
+router.get("/api/captures/stats", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const stats = await dbq.getCaptureStats(req.userId!);
+    res.json(stats);
+  } catch {
+    res.status(500).json({ error: "Failed to get stats" });
+  }
+});
+
 // Get capture
 router.get("/api/captures/:id", requireAuth, async (req: AuthRequest, res) => {
   const id = req.params.id as string;

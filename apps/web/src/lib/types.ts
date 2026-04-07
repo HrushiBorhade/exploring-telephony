@@ -3,6 +3,13 @@ export interface PaginatedResponse<T> {
   nextCursor: string | null;
 }
 
+export interface CaptureStats {
+  total: number;
+  completed: number;
+  totalDuration: number;
+  thisWeek: number;
+}
+
 export interface Capture {
   id: string;
   userId?: string;

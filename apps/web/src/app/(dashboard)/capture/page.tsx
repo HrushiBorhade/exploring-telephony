@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, LoaderCircle, AudioWaveform } from "lucide-react";
+import { ChevronRight, LoaderCircle, AudioWaveform, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,13 @@ import { useCaptures, useCreateCapture } from "@/lib/api";
 import { SectionCards } from "@/components/section-cards";
 
 const statusConfig: Record<string, { label: string; className: string; dot: string; pulse?: boolean }> = {
-  created:   { label: "Created",   className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",          dot: "bg-zinc-400 dark:bg-zinc-500" },
-  calling:   { label: "Calling",   className: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900",    dot: "bg-yellow-500 dark:bg-yellow-400", pulse: true },
-  active:    { label: "Live",      className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
-  ended:      { label: "Ended",      className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",          dot: "bg-zinc-400 dark:bg-zinc-500" },
-  processing: { label: "Processing", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900",  dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
-  failed:     { label: "Failed",     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",           dot: "bg-red-500 dark:bg-red-400" },
-  completed:  { label: "Completed",  className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",        dot: "bg-blue-500 dark:bg-blue-400" },
+  created:    { label: "Created",    className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",               dot: "bg-zinc-400 dark:bg-zinc-500" },
+  calling:    { label: "Calling",    className: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900",     dot: "bg-yellow-500 dark:bg-yellow-400", pulse: true },
+  active:     { label: "Live",       className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
+  ended:      { label: "Ended",      className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",               dot: "bg-zinc-400 dark:bg-zinc-500" },
+  processing: { label: "Processing", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900",     dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
+  failed:     { label: "Failed",     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",                       dot: "bg-red-500 dark:bg-red-400" },
+  completed:  { label: "Completed",  className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",                 dot: "bg-blue-500 dark:bg-blue-400" },
 };
 
 function formatDuration(s?: number | null) {
@@ -92,6 +92,8 @@ export default function CaptureDashboard() {
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
+    isError,
+    refetch,
   } = useCaptures();
   const createMutation = useCreateCapture();
 
@@ -115,17 +117,15 @@ export default function CaptureDashboard() {
     [data]
   );
 
-  const completedCount = captures.filter((c) => c.status === "completed").length;
-
   // Intersection observer for infinite scroll
-  const sentinelRef = useRef<HTMLTableRowElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const observerCallback = useCallback(
     (entries: IntersectionObserverEntry[]) => {
-      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage && !isError) {
         fetchNextPage();
       }
     },
-    [hasNextPage, isFetchingNextPage, fetchNextPage]
+    [hasNextPage, isFetchingNextPage, isError, fetchNextPage]
   );
 
   useEffect(() => {
@@ -134,7 +134,7 @@ export default function CaptureDashboard() {
     const observer = new IntersectionObserver(observerCallback, { rootMargin: "200px" });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [observerCallback, captures.length]);
+  }, [observerCallback]);
 
   async function create() {
     try {
@@ -153,7 +153,7 @@ export default function CaptureDashboard() {
   return (
     <div className="@container/main flex flex-1 flex-col gap-2">
       <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-        <SectionCards captures={captures} />
+        <SectionCards />
         <motion.div
           className="px-4 lg:px-6"
           initial="hidden"
@@ -163,29 +163,27 @@ export default function CaptureDashboard() {
           <motion.div variants={fadeUp} className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">All Captures</h2>
-              {!isLoading && !error && captures.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {captures.length} capture{captures.length !== 1 ? "s" : ""}
-                  {completedCount > 0 && (
-                    <> · {completedCount} completed</>
-                  )}
-                </p>
-              )}
             </div>
             <Button onClick={() => setOpen(true)}>New Capture</Button>
           </motion.div>
 
           <motion.div variants={fadeUp} className="rounded-lg border border-border overflow-hidden">
+          {/* ── Initial loading ── */}
           {isLoading ? (
             <TableSkeleton />
-          ) : error ? (
+
+          /* ── Initial error (no data at all) ── */
+          ) : isError && captures.length === 0 ? (
             <div className="py-12 text-center space-y-3 px-6">
+              <AlertCircle className="size-8 mx-auto text-muted-foreground/40" />
               <p className="font-medium">Failed to load captures</p>
-              <p className="text-sm text-muted-foreground">{error.message}</p>
-              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
-                Retry
+              <p className="text-sm text-muted-foreground">{error?.message}</p>
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                Try again
               </Button>
             </div>
+
+          /* ── Empty state ── */
           ) : captures.length === 0 ? (
             <div className="py-20 text-center px-6">
               <div className="inline-flex items-center justify-center size-12 rounded-xl bg-muted/50 mb-4">
@@ -196,6 +194,8 @@ export default function CaptureDashboard() {
                 Click &quot;New Capture&quot; to bridge two phone numbers and start recording.
               </p>
             </div>
+
+          /* ── Data loaded — table ── */
           ) : (
             <Table>
               <TableHeader>
@@ -251,22 +251,53 @@ export default function CaptureDashboard() {
                     </TableRow>
                   );
                 })}
-                {/* Sentinel row for infinite scroll */}
-                {hasNextPage && (
-                  <TableRow ref={sentinelRef} className="border-0">
-                    <TableCell colSpan={6} className="p-0 h-1" />
-                  </TableRow>
-                )}
-                {/* Loading skeleton when fetching next page */}
+
+                {/* ── Loading next page ── */}
                 {isFetchingNextPage && <SkeletonRows count={2} />}
               </TableBody>
             </Table>
           )}
           </motion.div>
+
+          {/* ── Infinite scroll sentinel + states (below table border) ── */}
+          {captures.length > 0 && (
+            <div className="pt-3 pb-1">
+              {/* Error loading next page */}
+              {isError && captures.length > 0 && !isFetchingNextPage && (
+                <div className="flex items-center justify-center gap-2 py-2">
+                  <AlertCircle className="size-3.5 text-destructive" />
+                  <span className="text-sm text-muted-foreground">Failed to load more</span>
+                  <Button variant="ghost" size="xs" onClick={() => fetchNextPage()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
+
+              {/* Sentinel for auto-load */}
+              {hasNextPage && !isError && (
+                <div ref={sentinelRef} className="h-1" />
+              )}
+
+              {/* Loading indicator for next page (below table) */}
+              {isFetchingNextPage && (
+                <div className="flex items-center justify-center gap-2 py-2">
+                  <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Loading more captures...</span>
+                </div>
+              )}
+
+              {/* End of list */}
+              {!hasNextPage && !isLoading && captures.length > 0 && (
+                <p className="text-center text-xs text-muted-foreground/50 py-1">
+                  All {captures.length} captures loaded
+                </p>
+              )}
+            </div>
+          )}
         </motion.div>
       </div>
 
-      {/* New Capture dialog */}
+      {/* ── New Capture dialog ── */}
       <Dialog open={open} onOpenChange={(v) => { if (!creating) setOpen(v); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
