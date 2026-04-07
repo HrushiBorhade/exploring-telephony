@@ -1,3 +1,8 @@
+export interface PaginatedResponse<T> {
+  items: T[];
+  nextCursor: string | null;
+}
+
 export interface Capture {
   id: string;
   userId?: string;

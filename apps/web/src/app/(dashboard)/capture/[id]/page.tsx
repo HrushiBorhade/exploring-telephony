@@ -27,7 +27,7 @@ function fmtTimestamp(s: number) {
   return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-const participantColor = { a: "#60a5fa", b: "#fb923c" } as const;
+const participantColor = { a: "#3ea88e", b: "#8b8b96" } as const;
 
 const emotionClassName: Record<string, string> = {
   happy:   "text-emerald-600 dark:text-emerald-400",
@@ -106,12 +106,12 @@ const UtteranceRow = memo(function UtteranceRow({
         animationDelay: `${index * 30}ms`,
       }}
     >
-      <div className="flex items-start gap-2">
-        <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums mt-0.5 leading-tight">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums leading-none">
           {fmtTimestamp(u.start)}&ndash;{fmtTimestamp(u.end)}
         </span>
-        <span className="flex-1 text-sm leading-relaxed min-w-0 break-words">{u.text}</span>
-        <div className="shrink-0 flex items-center gap-1.5 mt-0.5">
+        <span className="flex-1 text-sm leading-snug min-w-0 break-words">{u.text}</span>
+        <div className="shrink-0 flex items-center gap-1.5">
           <span className={`text-[10px] ${emoCls}`}>{u.emotion}</span>
           <span className="text-[10px] text-muted-foreground uppercase">{u.language}</span>
         </div>
@@ -223,10 +223,10 @@ export default function CaptureDetailPage() {
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {isCompleted && datasetCsvProxyUrl && (
-            <a href={datasetCsvProxyUrl} download className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Button variant="outline" size="sm" render={<a href={datasetCsvProxyUrl} download />}>
               <Download className="size-3.5" />
-              <span className="hidden sm:inline">CSV</span>
-            </a>
+              CSV
+            </Button>
           )}
 
           <Badge variant="outline" className={`${cfg.badgeClass} whitespace-nowrap transition-colors duration-300 text-[10px] sm:text-xs`}>
@@ -368,16 +368,10 @@ export default function CaptureDetailPage() {
 
               {hasUtterances && (
                 <motion.div variants={fadeUp} className="space-y-1">
-                  <div className="flex items-center justify-between py-2">
+                  <div className="py-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
                       Utterances
                     </p>
-                    {datasetCsvProxyUrl && (
-                      <a href={datasetCsvProxyUrl} download className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-                        <Download className="size-3" />
-                        CSV
-                      </a>
-                    )}
                   </div>
 
                   <Tabs defaultValue="a">

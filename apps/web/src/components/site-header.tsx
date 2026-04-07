@@ -39,8 +39,8 @@ export function SiteHeader() {
               <>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
-                  <BreadcrumbPage className="font-mono text-xs max-w-[120px] sm:max-w-[200px] truncate">
-                    {captureId}
+                  <BreadcrumbPage className="font-mono text-xs max-w-[100px] sm:max-w-[160px] truncate">
+                    {captureId.length > 10 ? `${captureId.slice(0, 10)}…` : captureId}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </>

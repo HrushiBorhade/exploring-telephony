@@ -15,15 +15,34 @@ import type { Capture } from "@repo/types";
 const { LIVEKIT_SIP_TRUNK_ID } = env;
 const router = Router();
 
-// List captures
+// List captures (cursor-paginated)
 router.get("/api/captures", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const dbCaptures = await dbq.listCapturesByUser(req.userId!);
-    const merged = dbCaptures.map((row) => activeCaptures.get(row.id) ?? row);
-    const inMemoryOnly = Array.from(activeCaptures.values()).filter(
-      (c) => !dbCaptures.find((r) => r.id === c.id) && c.userId === req.userId
-    );
-    res.json([...merged, ...inMemoryOnly].map(toApiCapture));
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+
+    const rows = await dbq.listCapturesByUser(req.userId!, { cursor, limit });
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
+    // Merge in-memory active captures with DB rows
+    const merged = pageRows.map((row) => activeCaptures.get(row.id) ?? row);
+
+    // On first page (no cursor), prepend in-memory-only captures (newly created, not yet in DB pagination window)
+    const items = !cursor
+      ? [
+          ...Array.from(activeCaptures.values())
+            .filter((c) => !pageRows.find((r) => r.id === c.id) && c.userId === req.userId)
+            .map(toApiCapture),
+          ...merged.map(toApiCapture),
+        ]
+      : merged.map(toApiCapture);
+
+    const nextCursor = hasMore && pageRows.length > 0
+      ? pageRows[pageRows.length - 1].createdAt?.toISOString() ?? null
+      : null;
+
+    res.json({ items, nextCursor });
   } catch {
     res.status(500).json({ error: "Failed to list captures" });
   }

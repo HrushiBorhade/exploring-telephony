@@ -23,12 +23,24 @@ export async function findCaptureByEgressId(egressId: string) {
   return db.query.captures.findFirst({ where: eq(schema.captures.egressId, egressId) });
 }
 
-export async function listCapturesByUser(userId: string) {
+export async function listCapturesByUser(
+  userId: string,
+  opts?: { cursor?: string; limit?: number },
+) {
+  const limit = opts?.limit ?? 20;
+  const conditions = [eq(schema.captures.userId, userId)];
+
+  if (opts?.cursor) {
+    // cursor is a createdAt ISO string — fetch rows older than cursor
+    conditions.push(sql`${schema.captures.createdAt} < ${opts.cursor}`);
+  }
+
   return db
     .select()
     .from(schema.captures)
-    .where(eq(schema.captures.userId, userId))
-    .orderBy(desc(schema.captures.createdAt));
+    .where(and(...conditions))
+    .orderBy(desc(schema.captures.createdAt))
+    .limit(limit + 1); // fetch one extra to determine hasMore
 }
 
 export async function findCaptureByRoomName(roomName: string) {

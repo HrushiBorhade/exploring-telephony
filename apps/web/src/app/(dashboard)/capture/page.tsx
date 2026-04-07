@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, LoaderCircle, Phone, AudioWaveform } from "lucide-react";
+import { ChevronRight, LoaderCircle, AudioWaveform } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,23 @@ function formatRelativeTime(date: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function SkeletonRows({ count = 3 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <TableRow key={`skeleton-${i}`}>
+          <TableCell className="pl-6"><Skeleton className="h-4 w-28 skeleton-shimmer" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-44 skeleton-shimmer" /></TableCell>
+          <TableCell><Skeleton className="h-5 w-20 rounded-full skeleton-shimmer" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-10 skeleton-shimmer" /></TableCell>
+          <TableCell><Skeleton className="h-4 w-16 skeleton-shimmer" /></TableCell>
+          <TableCell className="pr-6"><Skeleton className="h-4 w-4 ml-auto skeleton-shimmer" /></TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
 function TableSkeleton() {
   return (
     <Table>
@@ -57,16 +74,7 @@ function TableSkeleton() {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <TableRow key={i}>
-            <TableCell className="pl-6"><Skeleton className="h-4 w-28 skeleton-shimmer" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-44 skeleton-shimmer" /></TableCell>
-            <TableCell><Skeleton className="h-5 w-20 rounded-full skeleton-shimmer" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-10 skeleton-shimmer" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-16 skeleton-shimmer" /></TableCell>
-            <TableCell className="pr-6"><Skeleton className="h-4 w-4 ml-auto skeleton-shimmer" /></TableCell>
-          </TableRow>
-        ))}
+        <SkeletonRows />
       </TableBody>
     </Table>
   );
@@ -77,7 +85,14 @@ const stagger = pageStagger;
 
 export default function CaptureDashboard() {
   const router = useRouter();
-  const { data: captures = [], isLoading, error } = useCaptures();
+  const {
+    data,
+    isLoading,
+    error,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useCaptures();
   const createMutation = useCreateCapture();
 
   const [open, setOpen] = useState(false);
@@ -94,7 +109,32 @@ export default function CaptureDashboard() {
     return () => window.removeEventListener("open-new-capture", handleOpen);
   }, []);
 
+  // Flatten paginated data
+  const captures = useMemo(
+    () => data?.pages.flatMap((p) => p.items) ?? [],
+    [data]
+  );
+
   const completedCount = captures.filter((c) => c.status === "completed").length;
+
+  // Intersection observer for infinite scroll
+  const sentinelRef = useRef<HTMLTableRowElement>(null);
+  const observerCallback = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage]
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(observerCallback, { rootMargin: "200px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [observerCallback, captures.length]);
 
   async function create() {
     try {
@@ -184,7 +224,7 @@ export default function CaptureDashboard() {
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push(`/capture/${c.id}`); }}
                       style={{
                         animation: "fade-in-up 0.3s ease-out backwards",
-                        animationDelay: `${i * 40}ms`,
+                        animationDelay: `${Math.min(i, 10) * 40}ms`,
                       }}
                     >
                       <TableCell className="pl-6 font-medium max-w-[180px] truncate">{c.name || "\u2014"}</TableCell>
@@ -211,6 +251,14 @@ export default function CaptureDashboard() {
                     </TableRow>
                   );
                 })}
+                {/* Sentinel row for infinite scroll */}
+                {hasNextPage && (
+                  <TableRow ref={sentinelRef} className="border-0">
+                    <TableCell colSpan={6} className="p-0 h-1" />
+                  </TableRow>
+                )}
+                {/* Loading skeleton when fetching next page */}
+                {isFetchingNextPage && <SkeletonRows count={2} />}
               </TableBody>
             </Table>
           )}

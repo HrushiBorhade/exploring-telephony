@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Capture } from "./types";
+import type { Capture, PaginatedResponse } from "./types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -59,10 +59,18 @@ async function postJson<T>(url: string, body?: unknown): Promise<T> {
 
 // ── Queries ─────────────────────────────────────────────────────────
 
+const CAPTURES_PAGE_SIZE = 20;
+
 export function useCaptures() {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: captureKeys.all,
-    queryFn: () => fetchJson<Capture[]>(`${API}/api/captures`),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: String(CAPTURES_PAGE_SIZE) });
+      if (pageParam) params.set("cursor", pageParam);
+      return fetchJson<PaginatedResponse<Capture>>(`${API}/api/captures?${params}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
     staleTime: 30_000,
   });
 }
@@ -96,30 +104,10 @@ export function useCreateCapture() {
   return useMutation({
     mutationFn: (data: { name: string; phoneB: string; language: string }) =>
       postJson<Capture>(`${API}/api/captures`, data),
-    onMutate: async (newCapture) => {
-      await queryClient.cancelQueries({ queryKey: captureKeys.all });
-      const prev = queryClient.getQueryData<Capture[]>(captureKeys.all);
-      if (prev) {
-        queryClient.setQueryData(captureKeys.all, [
-          {
-            id: `temp-${Date.now()}`,
-            status: "created" as const,
-            name: newCapture.name,
-            phoneA: "",
-            phoneB: newCapture.phoneB,
-            language: newCapture.language,
-            createdAt: new Date().toISOString(),
-          },
-          ...prev,
-        ]);
-      }
-      return { prev };
-    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: captureKeys.all });
     },
-    onError: (err, _, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(captureKeys.all, ctx.prev);
+    onError: (err) => {
       toast.error(err.message);
     },
   });
