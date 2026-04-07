@@ -11,6 +11,7 @@ import { AuthPanel } from "@/components/auth-panel";
 import { useProfile } from "@/lib/api";
 import { STEPS, type Step } from "./_steps/shared";
 import { ProfileStep } from "./_steps/profile-step";
+import { LanguagesStep } from "./_steps/languages-step";
 
 function StepDots({ current, total }: { current: number; total: number }) {
   return (
@@ -146,34 +147,7 @@ function OnboardingContent() {
                         exit="exit"
                         className="flex flex-col gap-4 p-6"
                       >
-                        {/* LanguagesStep — placeholder until Task 11 */}
-                        <div className="space-y-4">
-                          <div>
-                            <h2 className="text-lg font-semibold font-heading">
-                              Select languages
-                            </h2>
-                            <p className="text-sm text-muted-foreground">
-                              What languages do you speak?
-                            </p>
-                          </div>
-                          <p className="text-sm text-muted-foreground py-8 text-center">
-                            Languages form loading...
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={handleBack}
-                              className="text-muted-foreground text-sm underline"
-                            >
-                              Back
-                            </button>
-                            <button
-                              onClick={handleNext}
-                              className="text-primary text-sm underline"
-                            >
-                              Complete (placeholder)
-                            </button>
-                          </div>
-                        </div>
+                        <LanguagesStep onNext={handleNext} onBack={handleBack} profile={profile} />
                       </motion.div>
                     )}
                   </AnimatePresence>

@@ -88,7 +88,7 @@ export function LoginForm({
       verifyingRef.current = false;
       return;
     }
-    router.push("/capture");
+    router.push("/auth-callback");
     verifyingRef.current = false;
   }
 
