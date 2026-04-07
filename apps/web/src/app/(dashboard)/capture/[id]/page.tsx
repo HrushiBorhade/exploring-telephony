@@ -352,14 +352,14 @@ export default function CaptureDetailPage() {
                   {recordingUrlA && (
                     <WaveformPlayer
                       url={recordingUrlA}
-                      label={`A — ${capture.phoneA}`}
+                      label={`Contributor A — ${capture.phoneA}`}
                       accentColor={participantColor.a}
                     />
                   )}
                   {recordingUrlB && (
                     <WaveformPlayer
                       url={recordingUrlB}
-                      label={`B — ${capture.phoneB}`}
+                      label={`Contributor B — ${capture.phoneB}`}
                       accentColor={participantColor.b}
                     />
                   )}

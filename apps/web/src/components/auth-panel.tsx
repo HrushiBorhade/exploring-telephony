@@ -61,7 +61,7 @@ function MockAudioPlayer() {
     >
       <div>
         <p className="text-xs font-medium truncate">capture-2026-04-07</p>
-        <p className="text-[10px] text-muted-foreground">Speaker A · Hindi</p>
+        <p className="text-[10px] text-muted-foreground">Contributor A · Hindi</p>
       </div>
       <div className="rounded-lg bg-muted/50 py-2">
         <WaveformDisplay />
@@ -120,11 +120,11 @@ export function AuthPanel() {
           <div className="flex items-center gap-6">
             <div className="flex flex-col items-center gap-2">
               <FluidOrb size={100} speed={8} delay={0} />
-              <span className="text-[10px] font-mono text-muted-foreground">Speaker A</span>
+              <span className="text-[10px] font-mono text-muted-foreground">Contributor A</span>
             </div>
             <div className="flex flex-col items-center gap-2">
               <FluidOrb size={100} speed={12} delay={0.5} />
-              <span className="text-[10px] font-mono text-muted-foreground">Speaker B</span>
+              <span className="text-[10px] font-mono text-muted-foreground">Contributor B</span>
             </div>
           </div>
 
