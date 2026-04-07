@@ -94,7 +94,10 @@ export function WaveformPlayer({
             </div>
           </div>
         )}
-        <div className={`flex items-center gap-2 sm:gap-3 rounded-lg border border-border/60 bg-zinc-900/60 px-2 sm:px-3 ${label ? "py-2.5" : "py-1.5"}`}>
+        <div
+          className={`flex items-center gap-2 sm:gap-3 rounded-lg border border-border/60 bg-muted/60 px-2 sm:px-3 transition-shadow duration-300 hover:shadow-[0_0_12px_-4px_var(--accent-glow)] ${label ? "py-2.5" : "py-1.5"}`}
+          style={{ "--accent-glow": accentColor } as React.CSSProperties}
+        >
           <AudioPlayerButton
             item={item}
             variant="ghost"
