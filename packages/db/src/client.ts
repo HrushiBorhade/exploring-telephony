@@ -9,10 +9,12 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const client = postgres(DATABASE_URL, {
   max: parseInt(process.env.DB_POOL_MAX ?? "10"),
   idle_timeout: 20,
   connect_timeout: 10,
-  ssl: "prefer",
+  ssl: isProduction ? "require" : false,
 });
 export const db = drizzle(client, { schema });
