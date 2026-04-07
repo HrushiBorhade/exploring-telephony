@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, LoaderCircle, Phone } from "lucide-react";
+import { ChevronRight, LoaderCircle, Phone, AudioWaveform } from "lucide-react";
+import { motion } from "motion/react";
+import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -15,17 +17,17 @@ import { useCaptures, useCreateCapture } from "@/lib/api";
 import { SectionCards } from "@/components/section-cards";
 
 const statusConfig: Record<string, { label: string; className: string; dot: string; pulse?: boolean }> = {
-  created:   { label: "Created",   className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
-  calling:   { label: "Calling",   className: "bg-yellow-950 text-yellow-400 border-yellow-900",    dot: "bg-yellow-400", pulse: true },
-  active:    { label: "Live",      className: "bg-emerald-950 text-emerald-400 border-emerald-900", dot: "bg-emerald-400", pulse: true },
-  ended:      { label: "Ended",      className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
-  processing: { label: "Processing", className: "bg-purple-950 text-purple-400 border-purple-900",  dot: "bg-purple-400", pulse: true },
-  failed:     { label: "Failed",     className: "bg-red-950 text-red-400 border-red-900",           dot: "bg-red-400" },
-  completed:  { label: "Completed",  className: "bg-blue-950 text-blue-400 border-blue-900",        dot: "bg-blue-400" },
+  created:   { label: "Created",   className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",          dot: "bg-zinc-400 dark:bg-zinc-500" },
+  calling:   { label: "Calling",   className: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900",    dot: "bg-yellow-500 dark:bg-yellow-400", pulse: true },
+  active:    { label: "Live",      className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
+  ended:      { label: "Ended",      className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",          dot: "bg-zinc-400 dark:bg-zinc-500" },
+  processing: { label: "Processing", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900",  dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
+  failed:     { label: "Failed",     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",           dot: "bg-red-500 dark:bg-red-400" },
+  completed:  { label: "Completed",  className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",        dot: "bg-blue-500 dark:bg-blue-400" },
 };
 
 function formatDuration(s?: number | null) {
-  if (s == null) return "—";
+  if (s == null) return "\u2014";
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, "0")}`;
@@ -57,18 +59,21 @@ function TableSkeleton() {
       <TableBody>
         {Array.from({ length: 3 }).map((_, i) => (
           <TableRow key={i}>
-            <TableCell className="pl-6"><Skeleton className="h-4 w-28" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-44" /></TableCell>
-            <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-10" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-            <TableCell className="pr-6"><Skeleton className="h-4 w-4 ml-auto" /></TableCell>
+            <TableCell className="pl-6"><Skeleton className="h-4 w-28 skeleton-shimmer" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-44 skeleton-shimmer" /></TableCell>
+            <TableCell><Skeleton className="h-5 w-20 rounded-full skeleton-shimmer" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-10 skeleton-shimmer" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-16 skeleton-shimmer" /></TableCell>
+            <TableCell className="pr-6"><Skeleton className="h-4 w-4 ml-auto skeleton-shimmer" /></TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
   );
 }
+
+const fadeUp = pageFadeUp;
+const stagger = pageStagger;
 
 export default function CaptureDashboard() {
   const router = useRouter();
@@ -82,7 +87,6 @@ export default function CaptureDashboard() {
 
   const creating = createMutation.isPending;
 
-  const liveCount = captures.filter((c) => c.status === "active" || c.status === "calling").length;
   const completedCount = captures.filter((c) => c.status === "completed").length;
 
   async function create() {
@@ -103,16 +107,18 @@ export default function CaptureDashboard() {
     <div className="@container/main flex flex-1 flex-col gap-2">
       <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
         <SectionCards captures={captures} />
-        <div className="px-4 lg:px-6">
-          <div className="flex items-center justify-between mb-4">
+        <motion.div
+          className="px-4 lg:px-6"
+          initial="hidden"
+          animate="visible"
+          variants={stagger}
+        >
+          <motion.div variants={fadeUp} className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold">All Captures</h2>
+              <h2 className="text-lg font-semibold tracking-tight">All Captures</h2>
               {!isLoading && !error && captures.length > 0 && (
                 <p className="text-xs text-muted-foreground mt-1">
                   {captures.length} capture{captures.length !== 1 ? "s" : ""}
-                  {liveCount > 0 && (
-                    <> · <span className="text-emerald-400">{liveCount} live</span></>
-                  )}
                   {completedCount > 0 && (
                     <> · {completedCount} completed</>
                   )}
@@ -120,10 +126,9 @@ export default function CaptureDashboard() {
               )}
             </div>
             <Button onClick={() => setOpen(true)}>New Capture</Button>
-          </div>
+          </motion.div>
 
-          {/* Table — border-only container, no background color difference */}
-          <div className="rounded-lg border border-border overflow-hidden">
+          <motion.div variants={fadeUp} className="rounded-lg border border-border overflow-hidden">
           {isLoading ? (
             <TableSkeleton />
           ) : error ? (
@@ -135,10 +140,12 @@ export default function CaptureDashboard() {
               </Button>
             </div>
           ) : captures.length === 0 ? (
-            <div className="py-16 text-center px-6">
-              <Phone className="h-8 w-8 mx-auto mb-3 text-muted-foreground opacity-40" />
-              <p className="font-medium">No captures yet</p>
-              <p className="text-sm text-muted-foreground mt-1">
+            <div className="py-20 text-center px-6">
+              <div className="inline-flex items-center justify-center size-12 rounded-xl bg-muted/50 mb-4">
+                <AudioWaveform className="size-5 text-muted-foreground/50" />
+              </div>
+              <p className="font-medium text-sm">No captures yet</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-[260px] mx-auto">
                 Click &quot;New Capture&quot; to bridge two phone numbers and start recording.
               </p>
             </div>
@@ -155,7 +162,7 @@ export default function CaptureDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {captures.map((c) => {
+                {captures.map((c, i) => {
                   const callFailed = c.status === "ended" && !c.startedAt;
                   const sc = callFailed
                     ? statusConfig.failed
@@ -163,18 +170,22 @@ export default function CaptureDashboard() {
                   return (
                     <TableRow
                       key={c.id}
-                      className="cursor-pointer"
+                      className="cursor-pointer group/row transition-colors hover:bg-muted/40"
                       tabIndex={0}
                       role="link"
                       onClick={() => router.push(`/capture/${c.id}`)}
                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push(`/capture/${c.id}`); }}
+                      style={{
+                        animation: "fade-in-up 0.3s ease-out backwards",
+                        animationDelay: `${i * 40}ms`,
+                      }}
                     >
-                      <TableCell className="pl-6 font-medium">{c.name || "—"}</TableCell>
+                      <TableCell className="pl-6 font-medium">{c.name || "\u2014"}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
                         {c.phoneA} / {c.phoneB}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={sc.className}>
+                        <Badge variant="outline" className={`transition-colors ${sc.className}`}>
                           <span
                             className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${sc.dot}${sc.pulse ? " animate-pulse" : ""}`}
                           />
@@ -188,7 +199,7 @@ export default function CaptureDashboard() {
                         {formatRelativeTime(c.createdAt)}
                       </TableCell>
                       <TableCell className="pr-6">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/40 ml-auto transition-all group-hover/row:text-muted-foreground group-hover/row:translate-x-0.5" />
                       </TableCell>
                     </TableRow>
                   );
@@ -196,8 +207,8 @@ export default function CaptureDashboard() {
               </TableBody>
             </Table>
           )}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </div>
 
       {/* New Capture dialog */}
