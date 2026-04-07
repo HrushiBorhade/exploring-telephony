@@ -80,12 +80,6 @@ router.put("/api/profile/languages", requireAuth, async (req: AuthRequest, res) 
     }
   }
 
-  const hasPrimary = languages.some((l: any) => l.isPrimary);
-  if (!hasPrimary) {
-    res.status(400).json({ error: "A primary language is required" });
-    return;
-  }
-
   try {
     const profile = await dbq.getProfile(req.userId!);
     if (!profile) {

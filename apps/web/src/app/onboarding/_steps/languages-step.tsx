@@ -5,83 +5,54 @@ import { LoaderCircle, ChevronLeft } from "lucide-react";
 import { motion } from "motion/react";
 import { staggerContainer, staggerChild } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DialectInput } from "@/components/dialect-input";
 import { INDIAN_LANGUAGES } from "@/lib/schemas/onboarding";
 import { useUpdateLanguages } from "@/lib/api";
+import { toast } from "sonner";
 import type { StepProps } from "./shared";
 
 export function LanguagesStep({ onNext, onBack, profile }: StepProps) {
   const updateLanguages = useUpdateLanguages();
 
-  // Pre-fill from existing data
-  const existingPrimary = profile.languages.find((l) => l.isPrimary);
-  const existingAdditional = profile.languages
-    .filter((l) => !l.isPrimary)
-    .map((l) => l.languageCode);
-  const existingDialects = existingPrimary?.dialects ?? [];
+  const existingCodes = profile.languages.map((l) => l.languageCode);
+  const existingDialects = profile.languages.flatMap((l) => l.dialects ?? []);
 
-  const [primaryLanguage, setPrimaryLanguage] = useState(existingPrimary?.languageCode ?? "");
-  const [additionalLanguages, setAdditionalLanguages] = useState<string[]>(existingAdditional);
+  const [selected, setSelected] = useState<string[]>(existingCodes.length > 0 ? existingCodes : []);
   const [dialects, setDialects] = useState<string[]>(existingDialects);
 
-  function toggleLanguage(code: string) {
-    setAdditionalLanguages((prev) =>
+  function toggle(code: string) {
+    setSelected((prev) =>
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
     );
   }
 
-  // When primary changes, remove it from additional
-  function handlePrimaryChange(code: string) {
-    setPrimaryLanguage(code);
-    setAdditionalLanguages((prev) => prev.filter((c) => c !== code));
-  }
-
   async function handleSubmit() {
-    if (!primaryLanguage || updateLanguages.isPending) return;
+    if (selected.length === 0 || updateLanguages.isPending) return;
 
-    const primaryName = INDIAN_LANGUAGES.find((l) => l.code === primaryLanguage)?.name ?? primaryLanguage;
-
-    const languages = [
-      {
-        languageCode: primaryLanguage,
-        languageName: primaryName,
-        isPrimary: true,
-        dialects,
-      },
-      ...additionalLanguages.map((code) => ({
-        languageCode: code,
-        languageName: INDIAN_LANGUAGES.find((l) => l.code === code)?.name ?? code,
-        isPrimary: false,
-        dialects: [] as string[],
-      })),
-    ];
+    const languages = selected.map((code, i) => ({
+      languageCode: code,
+      languageName: INDIAN_LANGUAGES.find((l) => l.code === code)?.name ?? code,
+      isPrimary: i === 0,
+      dialects: i === 0 ? dialects : [],
+    }));
 
     try {
       await updateLanguages.mutateAsync({ languages });
       onNext();
-    } catch {
-      // Error already shown via toast in the hook
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to save languages");
     }
   }
-
-  const availableAdditional = INDIAN_LANGUAGES.filter(
-    (l) => l.code !== primaryLanguage
-  );
 
   return (
     <>
       <CardHeader className="p-0">
         <CardTitle className="font-heading">Select languages</CardTitle>
-        <CardDescription>What languages do you speak?</CardDescription>
+        <CardDescription>
+          Select all languages you can speak
+        </CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <motion.div
@@ -90,52 +61,39 @@ export function LanguagesStep({ onNext, onBack, profile }: StepProps) {
           initial="enter"
           animate="center"
         >
-          <motion.div variants={staggerChild} className="space-y-1.5">
-            <label className="text-sm font-medium">Primary Language</label>
-            <Select
-              value={primaryLanguage}
-              onValueChange={(v) => v && handlePrimaryChange(v)}
-              disabled={updateLanguages.isPending}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select primary language" />
-              </SelectTrigger>
-              <SelectContent>
-                {INDIAN_LANGUAGES.map((l) => (
-                  <SelectItem key={l.code} value={l.code}>
-                    {l.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </motion.div>
-
-          <motion.div variants={staggerChild} className="space-y-1.5">
+          <motion.div variants={staggerChild} className="space-y-2">
             <label className="text-sm font-medium">
-              Additional Languages{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              Languages
+              {selected.length > 0 && (
+                <span className="text-muted-foreground font-normal ml-1">
+                  ({selected.length} selected)
+                </span>
+              )}
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {availableAdditional.map((l) => {
-                const selected = additionalLanguages.includes(l.code);
+              {INDIAN_LANGUAGES.map((l) => {
+                const isSelected = selected.includes(l.code);
                 return (
                   <Badge
                     key={l.code}
-                    variant={selected ? "default" : "outline"}
-                    className="cursor-pointer select-none"
-                    onClick={() => !updateLanguages.isPending && toggleLanguage(l.code)}
+                    variant={isSelected ? "default" : "outline"}
+                    className="cursor-pointer select-none text-xs py-1 px-2.5"
+                    onClick={() => !updateLanguages.isPending && toggle(l.code)}
                   >
                     {l.name}
                   </Badge>
                 );
               })}
             </div>
+            {selected.length === 0 && (
+              <p className="text-xs text-destructive">Select at least one language</p>
+            )}
           </motion.div>
 
-          <motion.div variants={staggerChild} className="space-y-1.5">
+          <motion.div variants={staggerChild} className="space-y-2">
             <label className="text-sm font-medium">
-              Dialects{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              Dialects
+              <span className="text-muted-foreground font-normal ml-1">(optional)</span>
             </label>
             <DialectInput
               value={dialects}
@@ -145,7 +103,7 @@ export function LanguagesStep({ onNext, onBack, profile }: StepProps) {
             />
           </motion.div>
 
-          <motion.div variants={staggerChild} className="flex gap-2">
+          <motion.div variants={staggerChild} className="flex gap-2 pt-1">
             {onBack && (
               <Button
                 type="button"
@@ -160,7 +118,7 @@ export function LanguagesStep({ onNext, onBack, profile }: StepProps) {
             <Button
               className="flex-1"
               onClick={handleSubmit}
-              disabled={!primaryLanguage || updateLanguages.isPending}
+              disabled={selected.length === 0 || updateLanguages.isPending}
             >
               {updateLanguages.isPending ? (
                 <>
