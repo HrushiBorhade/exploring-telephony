@@ -4,7 +4,6 @@ import { useParams, useRouter } from "next/navigation";
 import { LoaderCircle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
@@ -47,25 +46,23 @@ const statusConfig: Record<string, { label: string; badgeClass: string; dot: str
 
 function DetailSkeleton() {
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border px-4 sm:px-6 py-3 flex items-center justify-between">
+    <>
+      <div className="flex items-center justify-between px-4 lg:px-6 py-4 border-b">
         <div className="flex items-center gap-3 min-w-0">
-          <Skeleton className="h-8 w-14 shrink-0" />
-          <Separator orientation="vertical" className="h-6" />
           <div className="space-y-1.5 min-w-0">
             <Skeleton className="h-4 w-40" />
             <Skeleton className="h-3 w-56" />
           </div>
         </div>
         <Skeleton className="h-6 w-28 rounded-full shrink-0" />
-      </header>
-      <div className="flex-1 flex items-center justify-center p-6">
+      </div>
+      <div className="flex-1 flex items-center justify-center p-4 lg:p-6">
         <div className="w-full max-w-3xl space-y-4">
           <Skeleton className="h-40 w-full rounded-xl" />
           <Skeleton className="h-24 w-full rounded-xl" />
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -153,7 +150,7 @@ export default function CaptureDetailPage() {
 
   if (error && !capture) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="flex-1 flex items-center justify-center p-6">
         <div className="max-w-sm text-center space-y-4">
           <p className="font-medium">Failed to load capture</p>
           <p className="text-sm text-muted-foreground">{error.message}</p>
@@ -178,23 +175,19 @@ export default function CaptureDetailPage() {
   const isProcessing = capture.status === "processing" || (capture.status === "ended" && capture.startedAt);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* ── Header ─────────────────────────────────── */}
-      <header className="border-b border-border px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+    <>
+      {/* ── Action bar ─────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 lg:px-6 py-4 border-b">
         <div className="flex items-center gap-3 min-w-0">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/capture")} className="shrink-0">
-            Back
-          </Button>
-          <Separator orientation="vertical" className="h-6 hidden sm:block" />
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold truncate">{capture.name || "Untitled"}</h1>
+            <h1 className="text-lg font-semibold truncate">{capture.name || "Untitled"}</h1>
             <p className="text-xs text-muted-foreground font-mono truncate">
               {capture.phoneA} {"\u2194"} {capture.phoneB}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           {isCompleted && capture.datasetCsvUrl && (
             <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="hidden sm:inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <Download className="size-3.5" />
@@ -227,10 +220,10 @@ export default function CaptureDetailPage() {
             </Button>
           )}
         </div>
-      </header>
+      </div>
 
       {/* ── Body ───────────────────────────────────── */}
-      <div className={`flex-1 p-4 sm:p-6 ${isCompleted ? "max-w-4xl mx-auto w-full" : "flex items-center justify-center"}`}>
+      <div className={`flex-1 p-4 lg:p-6 ${isCompleted ? "max-w-4xl mx-auto w-full" : "flex items-center justify-center"}`}>
         <div className={`w-full ${isCompleted ? "" : "max-w-lg"} space-y-4 sm:space-y-5`}>
 
           {/* ── Pre-call / In-call states ── */}
@@ -315,7 +308,7 @@ export default function CaptureDetailPage() {
                 )}
               </div>
 
-              {/* Mobile CSV download (hidden on desktop where it's in header) */}
+              {/* Mobile CSV download (hidden on desktop where it's in action bar) */}
               {capture.datasetCsvUrl && (
                 <a href={proxyAudioUrl(capture.datasetCsvUrl!, id)} download className="sm:hidden inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                   <Download className="size-3.5" />
@@ -379,6 +372,6 @@ export default function CaptureDetailPage() {
 
         </div>
       </div>
-    </div>
+    </>
   );
 }
