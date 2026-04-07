@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useCaptures, useCreateCapture } from "@/lib/api";
-import { signOut } from "@/lib/auth-client";
+import { SectionCards } from "@/components/section-cards";
 
 const statusConfig: Record<string, { label: string; className: string; dot: string; pulse?: boolean }> = {
   created:   { label: "Created",   className: "bg-zinc-800 text-zinc-400 border-zinc-700",          dot: "bg-zinc-500" },
@@ -100,42 +100,30 @@ export default function CaptureDashboard() {
   }
 
   return (
-    <div className="min-h-screen p-6 max-w-5xl mx-auto">
-      {/* Page header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Voice Capture Platform</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Bridge two phone numbers. Record. Get dual-channel audio for ASR datasets.
-          </p>
-          {!isLoading && !error && captures.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-2">
-              {captures.length} capture{captures.length !== 1 ? "s" : ""}
-              {liveCount > 0 && (
-                <> · <span className="text-emerald-400">{liveCount} live</span></>
+    <div className="@container/main flex flex-1 flex-col gap-2">
+      <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+        <SectionCards />
+        <div className="px-4 lg:px-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">All Captures</h2>
+              {!isLoading && !error && captures.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {captures.length} capture{captures.length !== 1 ? "s" : ""}
+                  {liveCount > 0 && (
+                    <> · <span className="text-emerald-400">{liveCount} live</span></>
+                  )}
+                  {completedCount > 0 && (
+                    <> · {completedCount} completed</>
+                  )}
+                </p>
               )}
-              {completedCount > 0 && (
-                <> · {completedCount} completed</>
-              )}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() =>
-              signOut().then(() => { window.location.href = "/login"; })
-            }
-          >
-            Sign out
-          </Button>
-          <Button onClick={() => setOpen(true)}>New Capture</Button>
-        </div>
-      </div>
+            </div>
+            <Button onClick={() => setOpen(true)}>New Capture</Button>
+          </div>
 
-      {/* Table — border-only container, no background color difference */}
-      <div className="rounded-lg border border-border overflow-hidden">
+          {/* Table — border-only container, no background color difference */}
+          <div className="rounded-lg border border-border overflow-hidden">
           {isLoading ? (
             <TableSkeleton />
           ) : error ? (
@@ -205,6 +193,8 @@ export default function CaptureDashboard() {
               </TableBody>
             </Table>
           )}
+          </div>
+        </div>
       </div>
 
       {/* New Capture dialog */}
