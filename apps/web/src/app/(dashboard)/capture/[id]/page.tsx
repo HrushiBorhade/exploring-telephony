@@ -223,7 +223,7 @@ export default function CaptureDetailPage() {
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {isCompleted && datasetCsvProxyUrl && (
-            <Button variant="outline" size="sm" render={<a href={datasetCsvProxyUrl} download />}>
+            <Button variant="outline" size="sm" nativeButton={false} render={<a href={datasetCsvProxyUrl} download />}>
               <Download className="size-3.5" />
               CSV
             </Button>
