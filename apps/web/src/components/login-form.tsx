@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,10 @@ export function LoginForm({
   const [resendCooldown, setResendCooldown] = useState(0);
   const verifyingRef = useRef(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  useEffect(() => {
+    return () => clearInterval(cooldownRef.current);
+  }, []);
 
   function startCooldown() {
     setResendCooldown(30);

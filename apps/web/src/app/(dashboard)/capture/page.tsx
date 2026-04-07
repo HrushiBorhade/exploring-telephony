@@ -102,7 +102,7 @@ export default function CaptureDashboard() {
   return (
     <div className="@container/main flex flex-1 flex-col gap-2">
       <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-        <SectionCards />
+        <SectionCards captures={captures} />
         <div className="px-4 lg:px-6">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -164,7 +164,10 @@ export default function CaptureDashboard() {
                     <TableRow
                       key={c.id}
                       className="cursor-pointer"
+                      tabIndex={0}
+                      role="link"
                       onClick={() => router.push(`/capture/${c.id}`)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push(`/capture/${c.id}`); }}
                     >
                       <TableCell className="pl-6 font-medium">{c.name || "—"}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
@@ -181,7 +184,7 @@ export default function CaptureDashboard() {
                       <TableCell className="font-mono text-sm tabular-nums">
                         {formatDuration(c.durationSeconds)}
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
+                      <TableCell className="text-muted-foreground text-sm" suppressHydrationWarning>
                         {formatRelativeTime(c.createdAt)}
                       </TableCell>
                       <TableCell className="pr-6">
