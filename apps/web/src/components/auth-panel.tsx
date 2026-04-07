@@ -2,8 +2,6 @@
 
 import { motion } from "motion/react";
 import { Play, SkipBack, SkipForward } from "lucide-react";
-import { FlickeringGrid } from "@/components/ui/flickering-grid";
-import { Ripple } from "@/components/ui/ripple";
 
 function FluidOrb({ size = 100, speed = 8, delay = 0 }: { size?: number; speed?: number; delay?: number }) {
   return (
@@ -86,23 +84,32 @@ function MockAudioPlayer() {
   );
 }
 
+/** Dashed grid background — same pattern as annote/frontend auth layout */
+const dashedGridStyle = {
+  backgroundImage:
+    "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
+  backgroundSize: "20px 20px",
+  maskImage:
+    "repeating-linear-gradient(to right, black 0px, black 3px, transparent 3px, transparent 8px), repeating-linear-gradient(to bottom, black 0px, black 3px, transparent 3px, transparent 8px)",
+  WebkitMaskImage:
+    "repeating-linear-gradient(to right, black 0px, black 3px, transparent 3px, transparent 8px), repeating-linear-gradient(to bottom, black 0px, black 3px, transparent 3px, transparent 8px)",
+  maskComposite: "intersect" as const,
+  WebkitMaskComposite: "source-in",
+};
+
 export function AuthPanel() {
   return (
-    <div className="relative hidden bg-background lg:block overflow-hidden">
-      <div className="absolute inset-0">
-        <FlickeringGrid
-          squareSize={4}
-          gridGap={6}
-          flickerChance={0.3}
-          color="var(--color-primary)"
-          maxOpacity={0.15}
-        />
-      </div>
+    <div className="relative hidden bg-muted/40 dark:bg-background lg:block overflow-hidden">
+      {/* Dashed grid background */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-20"
+        style={dashedGridStyle}
+      />
 
-      <Ripple mainCircleSize={140} mainCircleOpacity={0.2} numCircles={4} />
+      {/* Radial fade for depth */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,var(--color-background)_80%)]" />
 
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,var(--color-background)_75%)]" />
-
+      {/* Content */}
       <div className="absolute inset-0 flex items-center justify-center">
         <motion.div
           className="flex flex-col items-center gap-8"
