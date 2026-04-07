@@ -32,13 +32,14 @@ const navMain = [
 const navSecondary = [
   {
     title: "Settings",
-    url: "#",
+    url: "/settings",
     icon: <SettingsIcon />,
   },
   {
     title: "Help",
-    url: "#",
+    url: "https://github.com/HrushiBorhade/voice-agent-platform",
     icon: <CircleHelpIcon />,
+    external: true,
   },
 ];
 

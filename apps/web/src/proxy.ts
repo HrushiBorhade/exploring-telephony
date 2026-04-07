@@ -11,7 +11,10 @@ export function proxy(request: NextRequest) {
   }
 
   // Not logged in → redirect to login
-  if (pathname.startsWith("/capture") && !sessionCookie) {
+  if (
+    (pathname.startsWith("/capture") || pathname.startsWith("/settings")) &&
+    !sessionCookie
+  ) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
@@ -19,5 +22,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/capture/:path*"],
+  matcher: ["/login", "/capture/:path*", "/settings"],
 };
