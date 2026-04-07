@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession } from "@/lib/auth-client";
+import { useProfile } from "@/lib/api";
 import {
   Card,
   CardHeader,
@@ -16,13 +17,14 @@ const fadeUp = pageFadeUp;
 const stagger = pageStagger;
 
 export default function SettingsPage() {
-  const { data: session, isPending } = useSession();
+  const { data: session, isPending: sessionPending } = useSession();
+  const { data: profileData, isLoading: profileLoading } = useProfile();
 
-  if (isPending) {
+  if (sessionPending || profileLoading) {
     return (
       <div className="p-4 lg:p-6 space-y-4">
         <Skeleton className="h-8 w-48 skeleton-shimmer" />
-        <Skeleton className="h-24 w-full max-w-lg skeleton-shimmer" />
+        <Skeleton className="h-48 w-full max-w-lg skeleton-shimmer" />
       </div>
     );
   }
@@ -30,6 +32,8 @@ export default function SettingsPage() {
   const user = session?.user;
   const phoneNumber = String((user as Record<string, unknown>)?.phoneNumber ?? "\u2014");
   const phoneVerified = Boolean((user as Record<string, unknown>)?.phoneNumberVerified);
+  const profile = profileData?.profile;
+  const languages = profileData?.languages ?? [];
 
   return (
     <div className="@container/main flex flex-1 flex-col gap-2">
@@ -40,7 +44,7 @@ export default function SettingsPage() {
         variants={stagger}
       >
         <motion.div variants={fadeUp}>
-          <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
+          <h2 className="text-lg font-semibold tracking-tight font-heading">Settings</h2>
           <p className="text-sm text-muted-foreground">
             Manage your account
           </p>
@@ -52,13 +56,15 @@ export default function SettingsPage() {
               <CardTitle>Profile</CardTitle>
               <CardDescription>Your account information</CardDescription>
             </CardHeader>
-            <div className="px-6 pb-6 space-y-4">
+            <div className="px-6 pb-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Name</span>
+                <span className="text-sm font-medium">{profile?.name ?? "\u2014"}</span>
+              </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Phone</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium font-mono">
-                    {phoneNumber}
-                  </span>
+                  <span className="text-sm font-medium font-mono">{phoneNumber}</span>
                   {phoneVerified && (
                     <Badge
                       variant="outline"
@@ -69,6 +75,34 @@ export default function SettingsPage() {
                   )}
                 </div>
               </div>
+              {profile && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Age</span>
+                    <span className="text-sm font-medium">{profile.age}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Gender</span>
+                    <span className="text-sm font-medium capitalize">{profile.gender.replace(/_/g, " ")}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Location</span>
+                    <span className="text-sm font-medium">{profile.city}, {profile.state}</span>
+                  </div>
+                </>
+              )}
+              {languages.length > 0 && (
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-sm text-muted-foreground shrink-0 mt-0.5">Languages</span>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {languages.map((l) => (
+                      <Badge key={l.languageCode} variant="secondary" className="text-xs">
+                        {l.languageName}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </motion.div>

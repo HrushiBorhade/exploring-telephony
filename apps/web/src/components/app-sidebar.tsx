@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth-client";
+import { useProfile } from "@/lib/api";
 
 const navMain = [
   {
@@ -44,12 +45,14 @@ const navSecondary = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session } = useSession();
+  const { data: profileData } = useProfile();
   const router = useRouter();
 
   const phoneNumber = String((session?.user as Record<string, unknown>)?.phoneNumber ?? "");
+  const profileName = profileData?.profile?.name;
   const user = {
-    name: phoneNumber || session?.user?.name || "User",
-    email: "",
+    name: profileName || phoneNumber || "User",
+    email: phoneNumber && profileName ? phoneNumber : "",
     avatar: "",
   };
 

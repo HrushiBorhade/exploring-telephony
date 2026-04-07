@@ -30,15 +30,16 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar()
 
-  // For phone-only auth, the "name" is usually the phone number
   const displayName = user.name || "User"
-  const initials = displayName
-    .replace(/^\+\d+/, (m) => m.slice(-2))
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "U"
+  const isPhone = /^\+?\d/.test(displayName)
+  const initials = isPhone
+    ? displayName.slice(-2)
+    : displayName
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "U"
 
   return (
     <SidebarMenu>
@@ -53,7 +54,10 @@ export function NavUser({
               <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium font-mono text-xs">{displayName}</span>
+              <span className={`truncate font-medium text-xs ${isPhone ? "font-mono" : ""}`}>{displayName}</span>
+              {user.email && (
+                <span className="truncate text-[10px] text-muted-foreground font-mono">{user.email}</span>
+              )}
             </div>
             <EllipsisVerticalIcon className="ml-auto size-4" />
           </DropdownMenuTrigger>
