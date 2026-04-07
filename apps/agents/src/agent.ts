@@ -258,5 +258,6 @@ cli.runApp(
   new WorkerOptions({
     agent: __filename,
     agentName: "telephony-agent",
+    maxConcurrentJobs: 10,
   }),
 );
