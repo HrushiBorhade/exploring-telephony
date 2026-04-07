@@ -35,7 +35,7 @@ export async function runMigrations() {
   await migrationClient`SELECT pg_advisory_lock(${MIGRATION_LOCK_ID})`;
 
   try {
-    await migrate(db, { migrationsFolder });
+    await migrate(db, { migrationsFolder, migrationsSchema: "public" });
     console.log("[MIGRATE] Migrations complete");
   } finally {
     await migrationClient`SELECT pg_advisory_unlock(${MIGRATION_LOCK_ID})`;
