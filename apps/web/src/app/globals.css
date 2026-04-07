@@ -117,6 +117,7 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --animate-ripple: ripple 3.4s ease-out infinite;
 }
 
 @layer base {
@@ -167,6 +168,11 @@
 @keyframes wave-bar {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(1); opacity: var(--tw-opacity, 0.24); }
+  100% { transform: scale(4); opacity: 0; }
 }
 
 @keyframes fade-in-up {

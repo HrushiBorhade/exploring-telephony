@@ -5,6 +5,7 @@ import { AudioWaveformIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { FlickeringGrid } from "@/components/ui/flickering-grid";
+import { Ripple } from "@/components/ui/ripple";
 
 const stagger = pageStagger;
 const fadeUp = pageFadeUp;
@@ -36,7 +37,7 @@ export default function LoginPage() {
         </div>
       </motion.div>
 
-      {/* Right panel — flickering grid + audio visualization */}
+      {/* Right panel — flickering grid + ripple + audio orb */}
       <div className="relative hidden bg-background lg:block overflow-hidden">
         {/* Flickering grid background */}
         <div className="absolute inset-0">
@@ -49,31 +50,32 @@ export default function LoginPage() {
           />
         </div>
 
-        {/* Radial fade at edges */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_30%,var(--color-background)_70%)]" />
+        {/* Ripple rings emanating from center */}
+        <Ripple
+          mainCircleSize={160}
+          mainCircleOpacity={0.08}
+          numCircles={3}
+        />
 
-        {/* Content */}
+        {/* Radial fade at edges */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,var(--color-background)_65%)]" />
+
+        {/* Audio orb at center */}
         <div className="absolute inset-0 flex items-center justify-center">
           <motion.div
-            className="text-center px-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.3 }}
           >
-            {/* Audio orb — pulsing circle with waveform bars */}
-            <div className="relative mx-auto size-40">
-              {/* Outer glow rings */}
-              <div className="absolute inset-0 rounded-full bg-primary/5 animate-ping" style={{ animationDuration: "3s" }} />
-              <div className="absolute inset-3 rounded-full bg-primary/8 animate-ping" style={{ animationDuration: "2.5s", animationDelay: "0.5s" }} />
-
-              {/* Core orb */}
-              <div className="absolute inset-6 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 backdrop-blur-sm flex items-center justify-center">
-                {/* Waveform bars inside orb */}
-                <div className="flex items-center gap-[2px] h-12">
-                  {Array.from({ length: 16 }).map((_, i) => (
+            <div className="relative size-28">
+              {/* Glass orb */}
+              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/15 backdrop-blur-sm flex items-center justify-center shadow-[0_0_40px_-8px_var(--color-primary)]">
+                {/* Waveform bars */}
+                <div className="flex items-center gap-[2px] h-10">
+                  {Array.from({ length: 14 }).map((_, i) => (
                     <div
                       key={i}
-                      className="w-[2px] rounded-full bg-primary/60"
+                      className="w-[2px] rounded-full bg-primary/70"
                       style={{
                         animation: `wave-bar ${1.0 + Math.sin(i * 0.6) * 0.5}s ease-in-out infinite`,
                         animationDelay: `${i * 0.08}s`,
@@ -85,7 +87,6 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-
           </motion.div>
         </div>
       </div>
