@@ -46,7 +46,7 @@ export function LanguagesStep({ onNext, onBack, profile }: StepProps) {
   }
 
   async function handleSubmit() {
-    if (!primaryLanguage) return;
+    if (!primaryLanguage || updateLanguages.isPending) return;
 
     const primaryName = INDIAN_LANGUAGES.find((l) => l.code === primaryLanguage)?.name ?? primaryLanguage;
 

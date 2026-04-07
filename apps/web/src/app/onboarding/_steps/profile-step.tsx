@@ -22,6 +22,7 @@ import {
   INDIAN_STATES,
 } from "@/lib/schemas/onboarding";
 import { useUpdateProfile } from "@/lib/api";
+import { toast } from "sonner";
 import type { StepProps } from "./shared";
 
 export function ProfileStep({ onNext, profile }: StepProps) {
@@ -49,13 +50,14 @@ export function ProfileStep({ onNext, profile }: StepProps) {
       await updateProfile.mutateAsync(data);
       onNext();
     } catch (err: any) {
-      // Map server field errors to form
       if (err.fields) {
         Object.entries(err.fields).forEach(([field, message]) => {
           setError(field as keyof ProfileFormValues, {
             message: message as string,
           });
         });
+      } else {
+        toast.error(err.message ?? "Failed to save profile");
       }
     }
   }

@@ -7,12 +7,16 @@ import { LoaderCircle } from "lucide-react";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const { data: profile, isLoading } = useProfile();
+  const { data: profile, isLoading, isError } = useProfile();
 
   useEffect(() => {
+    if (isError) {
+      router.replace("/login");
+      return;
+    }
     if (isLoading || !profile) return;
     router.replace(profile.onboardingCompleted ? "/capture" : "/onboarding");
-  }, [isLoading, profile, router]);
+  }, [isLoading, isError, profile, router]);
 
   return (
     <div className="flex min-h-svh items-center justify-center">

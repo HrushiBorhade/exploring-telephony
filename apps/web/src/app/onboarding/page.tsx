@@ -39,7 +39,12 @@ function StepDots({ current, total }: { current: number; total: number }) {
 function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: profile, isLoading } = useProfile();
+  const { data: profile, isLoading, isError } = useProfile();
+
+  // Auth error → back to login
+  useEffect(() => {
+    if (isError) router.replace("/login");
+  }, [isError, router]);
 
   const requestedStep = (searchParams.get("step") ?? "profile") as Step;
   const stepIndex = STEPS.indexOf(requestedStep);
