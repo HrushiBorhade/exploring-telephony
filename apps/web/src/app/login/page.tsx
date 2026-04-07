@@ -52,13 +52,13 @@ export default function LoginPage() {
 
         {/* Ripple rings emanating from center */}
         <Ripple
-          mainCircleSize={160}
-          mainCircleOpacity={0.08}
-          numCircles={3}
+          mainCircleSize={140}
+          mainCircleOpacity={0.2}
+          numCircles={4}
         />
 
         {/* Radial fade at edges */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,var(--color-background)_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_40%,var(--color-background)_75%)]" />
 
         {/* Audio orb at center */}
         <div className="absolute inset-0 flex items-center justify-center">

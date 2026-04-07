@@ -171,7 +171,7 @@
 }
 
 @keyframes ripple {
-  0% { transform: scale(1); opacity: var(--tw-opacity, 0.24); }
+  0% { transform: scale(1); opacity: 1; }
   100% { transform: scale(4); opacity: 0; }
 }
 

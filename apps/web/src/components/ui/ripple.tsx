@@ -31,7 +31,7 @@ export function Ripple({
         return (
           <div
             key={i}
-            className="absolute animate-ripple rounded-full border border-primary/10"
+            className="absolute animate-ripple rounded-full border border-primary/20"
             style={{
               width: `${size}px`,
               height: `${size}px`,
