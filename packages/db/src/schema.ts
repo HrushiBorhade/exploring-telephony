@@ -5,6 +5,7 @@ import {
   timestamp,
   varchar,
   integer,
+  serial,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -91,4 +92,30 @@ export const captures = pgTable("captures_v2", {
   index("captures_user_id_idx").on(t.userId),
   index("captures_egress_id_idx").on(t.egressId),
   index("captures_room_name_idx").on(t.roomName),
+]);
+
+// ── Onboarding ────────────────────────────────────────────────────────
+
+export const userProfiles = pgTable("user_profiles", {
+  id: text("id").primaryKey().references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  age: integer("age").notNull(),
+  gender: text("gender").notNull(),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userLanguages = pgTable("user_languages", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  languageCode: text("language_code").notNull(),
+  languageName: text("language_name").notNull(),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  dialects: text("dialects").array(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("user_languages_user_id_idx").on(t.userId),
 ]);
