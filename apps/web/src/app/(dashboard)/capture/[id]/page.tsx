@@ -412,7 +412,6 @@ export default function CaptureDetailPage() {
             >
               {[
                 { label: "Duration", value: audioDuration != null ? fmt(Math.round(audioDuration)) : fmt(capture.durationSeconds) },
-                { label: "Language", value: capture.language || "\u2014" },
                 { label: "Created", value: new Date(capture.createdAt).toLocaleDateString() },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center gap-1.5">
