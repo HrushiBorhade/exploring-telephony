@@ -27,8 +27,16 @@ export async function runMigrations(databaseUrl?: string) {
   const migrationClient = postgres(url, { max: 1, ssl: isProduction ? "require" : false });
   const db = drizzle(migrationClient);
 
+  // In Docker: /app/drizzle (cwd is /app)
+  // In local dev: cwd is apps/api, so walk up to repo root
+  const cwd = process.cwd();
+  const candidates = [
+    path.resolve(cwd, "drizzle"),
+    path.resolve(cwd, "../../drizzle"),
+  ];
   const migrationsFolder = process.env.MIGRATIONS_DIR
-    || path.resolve(process.cwd(), "drizzle");
+    || candidates.find((p) => require("fs").existsSync(path.join(p, "meta/_journal.json")))
+    || candidates[0];
 
   console.log(`[MIGRATE] Running migrations from ${migrationsFolder}`);
 

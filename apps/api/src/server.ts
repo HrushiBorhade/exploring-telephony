@@ -42,15 +42,6 @@ app.use((_req, res) => {
 // ════════════════════════════════════════════════════════════════════
 
 async function start() {
-  // Run DB migrations before starting the server
-  try {
-    await dbq.runMigrations(env.DATABASE_URL);
-    logger.info("[STARTUP] Database migrations applied");
-  } catch (err: any) {
-    logger.fatal({ error: err.message }, "[STARTUP] Migration failed — aborting");
-    process.exit(1);
-  }
-
   const server = app.listen(Number(PORT), async () => {
     logger.info({ port: PORT }, "Voice Capture Platform started");
 
