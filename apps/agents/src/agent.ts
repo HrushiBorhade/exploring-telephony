@@ -96,18 +96,30 @@ function fireSay(session: any, text: string, opts?: { audio?: ReadableStream<any
   }
 }
 
-// ── LiveKit API clients (created from env vars, same as setRoomMetadata pattern) ──
-const httpUrl = process.env.LIVEKIT_URL!.replace("wss://", "https://");
-const apiKey = process.env.LIVEKIT_API_KEY!;
-const apiSecret = process.env.LIVEKIT_API_SECRET!;
+// ── LiveKit API clients (lazy — env vars not available during Docker build) ──
+let _sipClient: SipClient | null = null;
+let _roomClient: RoomServiceClient | null = null;
 
-const sipClient = new SipClient(httpUrl, apiKey, apiSecret);
-const roomClient = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+function getSipClient(): SipClient {
+  if (!_sipClient) {
+    const url = process.env.LIVEKIT_URL!.replace("wss://", "https://");
+    _sipClient = new SipClient(url, process.env.LIVEKIT_API_KEY!, process.env.LIVEKIT_API_SECRET!);
+  }
+  return _sipClient;
+}
+
+function getRoomClient(): RoomServiceClient {
+  if (!_roomClient) {
+    const url = process.env.LIVEKIT_URL!.replace("wss://", "https://");
+    _roomClient = new RoomServiceClient(url, process.env.LIVEKIT_API_KEY!, process.env.LIVEKIT_API_SECRET!);
+  }
+  return _roomClient;
+}
 
 async function setRoomMetadata(roomName: string, metadata: Record<string, unknown>): Promise<boolean> {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await roomClient.updateRoomMetadata(roomName, JSON.stringify(metadata));
+      await getRoomClient().updateRoomMetadata(roomName, JSON.stringify(metadata));
       return true;
     } catch (err: any) {
       console.error(`[AGENT] setRoomMetadata attempt ${attempt}/3 failed: ${err.message}`);
@@ -171,7 +183,7 @@ export default defineAgent({
     log("Dialing both phones...");
 
     const dialWithTimeout = (phone: string, identity: string): Promise<string> => {
-      const dial = sipClient.createSipParticipant(sipTrunkId, phone, room.name!, {
+      const dial = getSipClient().createSipParticipant(sipTrunkId, phone, room.name!, {
         participantIdentity: identity,
         participantName: phone,
         waitUntilAnswered: true,
