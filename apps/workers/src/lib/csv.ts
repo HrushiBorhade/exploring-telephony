@@ -44,19 +44,28 @@ export function generateDatasetCsv(
   participantA: ParticipantData,
   participantB: ParticipantData,
 ): string {
+  // Interleave by start time for conversation flow (sorted chronologically)
   const rows: CsvRow[] = [
     ...toRows(captureId, participantA, "participant_a"),
     ...toRows(captureId, participantB, "participant_b"),
-  ];
+  ].sort((a, b) => {
+    const tA = a.timestamp_start.split(":").reduce((acc, v, i) => acc + Number(v) * (i === 0 ? 60 : 1), 0);
+    const tB = b.timestamp_start.split(":").reduce((acc, v, i) => acc + Number(v) * (i === 0 ? 60 : 1), 0);
+    return tA - tB;
+  });
 
-  return stringify(rows, {
+  // Add turn index for conversation ordering
+  const indexed = rows.map((row, i) => ({ turn_index: i + 1, ...row }));
+
+  return stringify(indexed, {
     header: true,
     columns: [
+      "turn_index",
+      "participant",
       "utterance_text",
-      "audio_clip_url",
       "timestamp_start",
       "timestamp_end",
-      "participant",
+      "audio_clip_url",
       "participant_track_url",
       "emotion",
       "language",

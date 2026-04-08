@@ -11,14 +11,15 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "*",
+    "@deepgram/sdk": "^5.0.0",
     "@google/genai": "*",
     "@repo/db": "workspace:*",
     "@repo/queues": "workspace:*",
     "bullmq": "*",
     "csv-stringify": "*",
+    "dotenv": "*",
     "pino": "*",
-    "pino-pretty": "*",
-    "dotenv": "*"
+    "pino-pretty": "*"
   },
   "devDependencies": {
     "@types/node": "*",

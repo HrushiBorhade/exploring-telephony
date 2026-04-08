@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { logger } from "../logger";
+import { transcribeWithDeepgram } from "./deepgram";
 
 const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -15,9 +16,31 @@ export interface TranscriptionResult {
   segments: Segment[];
 }
 
+/**
+ * Transcribe audio with Gemini, falling back to Deepgram on 503/429 errors.
+ */
 export async function transcribeWithGemini(
   audioBuffer: Buffer,
   mimeType: string = "audio/mp3",
+): Promise<TranscriptionResult> {
+  try {
+    return await _transcribeGemini(audioBuffer, mimeType);
+  } catch (err: any) {
+    const msg = err.message || "";
+    const isOverloaded = msg.includes("503") || msg.includes("429") || msg.includes("UNAVAILABLE") || msg.includes("RESOURCE_EXHAUSTED");
+
+    if (isOverloaded && process.env.DEEPGRAM_API_KEY) {
+      logger.warn("[GEMINI] Unavailable, falling back to Deepgram");
+      return transcribeWithDeepgram(audioBuffer, mimeType);
+    }
+
+    throw err;
+  }
+}
+
+async function _transcribeGemini(
+  audioBuffer: Buffer,
+  mimeType: string,
 ): Promise<TranscriptionResult> {
   logger.info({ sizeKB: (audioBuffer.length / 1024).toFixed(1), mimeType }, "[GEMINI] Starting transcription");
 

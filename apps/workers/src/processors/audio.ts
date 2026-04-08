@@ -1,10 +1,10 @@
 import { type Job } from "bullmq";
-import { readFile, writeFile, mkdtemp, rm } from "fs/promises";
+import { readFile, writeFile, mkdtemp, rm, rename } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import * as dbq from "@repo/db";
 import { transcribeWithGemini, type Segment } from "../lib/gemini";
-import { convertToMp3, sliceToMp3, formatTimestamp } from "../lib/ffmpeg";
+import { convertToMp3, sliceToMp3, formatTimestamp, getDuration, trimStart } from "../lib/ffmpeg";
 import { uploadToS3, downloadFromS3 } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { logger } from "../logger";
@@ -59,6 +59,39 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       convertToMp3(callerBRaw, callerBMp3),
     ]);
 
+    // ── Step 2b: Align all tracks to same duration ────────────────
+    // Egresses start at slightly different times (RoomComposite initializes
+    // faster than ParticipantEgress). They all STOP at the same time
+    // (synchronized stopEgress). So the difference is only at the start.
+    // We trim the beginning of longer tracks to match the shortest,
+    // removing only silence/initialization overhead — no speech is lost
+    // because the agent's 3s buffer + announcement ensures all egresses
+    // are recording before callers start talking.
+    const [durMixed, durA, durB] = await Promise.all([
+      getDuration(mixedMp3),
+      getDuration(callerAMp3),
+      getDuration(callerBMp3),
+    ]);
+
+    const minDuration = Math.min(durMixed, durA, durB);
+    log.info({ durMixed, durA, durB, minDuration }, "Track durations before alignment");
+
+    const trimIfNeeded = async (file: string, dur: number, label: string) => {
+      const excess = dur - minDuration;
+      if (excess > 0.1) {
+        const trimmed = file.replace(".mp3", "-aligned.mp3");
+        await trimStart(file, trimmed, excess);
+        await rename(trimmed, file);
+        log.info({ label, trimmedSec: excess.toFixed(2) }, "Track aligned");
+      }
+    };
+
+    await Promise.all([
+      trimIfNeeded(mixedMp3, durMixed, "mixed"),
+      trimIfNeeded(callerAMp3, durA, "caller_a"),
+      trimIfNeeded(callerBMp3, durB, "caller_b"),
+    ]);
+
     // ── Step 3: Upload full tracks to structured S3 paths ──────────
     await job.updateProgress(25);
     log.info("Step 3: Uploading full tracks");
@@ -69,9 +102,9 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       uploadToS3(`captures/${captureId}/participant-b/full.mp3`, await readFile(callerBMp3), "audio/mpeg"),
     ]);
 
-    // ── Step 4: Transcribe with Gemini ─────────────────────────────
+    // ── Step 4: Transcribe with Gemini 2.5 Pro ──────────────────────
     await job.updateProgress(35);
-    log.info("Step 4: Transcribing with Gemini");
+    log.info("Step 4: Transcribing with Gemini 2.5 Pro");
 
     const [resultA, resultB] = await Promise.all([
       transcribeWithGemini(await readFile(callerAMp3), "audio/mp3"),
@@ -145,13 +178,6 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
   } finally {
     await rm(tmpDir, { recursive: true }).catch(() => {});
   }
-}
-
-/** Download a file from URL and return the buffer */
-async function downloadFile(url: string): Promise<Buffer> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
-  return Buffer.from(await res.arrayBuffer());
 }
 
 /** Slice all segments from a track and upload to S3, returns array of public URLs */

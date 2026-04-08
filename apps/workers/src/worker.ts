@@ -3,6 +3,7 @@ import "dotenv/config";
 import { Worker } from "bullmq";
 import { redisConnection } from "@repo/queues";
 import { processAudio, type AudioJobData } from "./processors/audio";
+import { processCsvRegen, type CsvRegenJobData } from "./processors/csv-regen";
 import { logger } from "./logger";
 
 const audioWorker = new Worker<AudioJobData>("audio-processing", processAudio, {
@@ -39,13 +40,27 @@ audioWorker.on("error", (err) => {
   logger.error({ error: err.message }, "Worker error");
 });
 
-logger.info("Audio worker started, waiting for jobs...");
+// CSV regeneration worker (lightweight — no transcription, just CSV rebuild)
+const csvWorker = new Worker<CsvRegenJobData>("csv-regeneration", processCsvRegen, {
+  connection: redisConnection,
+  concurrency: 5,
+});
+
+csvWorker.on("completed", (job) => {
+  logger.info({ jobId: job.id, captureId: job.data.captureId }, "CSV regeneration completed");
+});
+
+csvWorker.on("failed", (job, err) => {
+  logger.error({ jobId: job?.id, captureId: job?.data.captureId, error: err.message }, "CSV regeneration failed");
+});
+
+logger.info("Workers started (audio + csv-regen), waiting for jobs...");
 
 // Graceful shutdown
 function shutdown(signal: string) {
-  logger.info({ signal }, "Shutting down worker...");
-  audioWorker.close().then(() => {
-    logger.info("Worker stopped");
+  logger.info({ signal }, "Shutting down workers...");
+  Promise.all([audioWorker.close(), csvWorker.close()]).then(() => {
+    logger.info("Workers stopped");
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 30_000);
