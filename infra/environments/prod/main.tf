@@ -659,6 +659,7 @@ module "ecs" {
           secrets = [
             { name = "DATABASE_URL", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DATABASE_URL::" },
             { name = "GEMINI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:GEMINI_API_KEY::" },
+            { name = "DEEPGRAM_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DEEPGRAM_API_KEY::" },
             { name = "S3_ACCESS_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_ACCESS_KEY::" },
             { name = "S3_SECRET_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_SECRET_KEY::" },
           ]
