@@ -2,17 +2,14 @@ import { Router } from "express";
 import { WebhookReceiver } from "livekit-server-sdk";
 import { roomService, egressClient } from "../lib/livekit";
 import * as dbq from "@repo/db";
-import { createS3FileOutput } from "../lib/s3";
 import { calculateDuration } from "../lib/helpers";
+import { startEgressForCapture } from "../lib/egress";
 import { audioQueue } from "@repo/queues";
 import { logger } from "../logger";
 import { env } from "../env";
-import { activeCaptures } from "../services/state";
-import { consentResolvers } from "../services/consent";
+import { activeCaptures, findCaptureByRoom } from "../services/state";
 import {
   captureActiveGauge,
-  egressSuccessTotal,
-  egressFailureTotal,
   webhookDurationHistogram,
 } from "../metrics";
 
@@ -39,70 +36,51 @@ router.post("/livekit/webhook", async (req, res) => {
   try {
     logger.info(`[WEBHOOK] ${event.event}`);
 
-    // ── Consent resolution via webhook ────────────
+    // ── room_metadata_changed: agent signals announced:true (start egress) or announced:false (failure) ──
     if (event.event === "room_metadata_changed" && event.room?.name && event.room?.metadata) {
-      logger.info({ roomName: event.room.name, metadata: event.room.metadata, resolverExists: consentResolvers.has(event.room.name), resolverKeys: Array.from(consentResolvers.keys()) }, "[WEBHOOK] room_metadata_changed DEBUG");
-      const resolver = consentResolvers.get(event.room.name);
-      if (resolver) {
-        try {
-          const parsed = JSON.parse(event.room.metadata);
-          if (parsed.consent === true) {
-            logger.info(`[WEBHOOK] Consent GRANTED for ${event.room.name}`);
-            resolver(true);
-          } else if (parsed.consent === false) {
-            logger.info(`[WEBHOOK] Consent DENIED for ${event.room.name}`);
-            resolver(false);
+      const roomName = event.room.name;
+      let parsed: Record<string, unknown> = {};
+      try { parsed = JSON.parse(event.room.metadata); } catch { /* not JSON */ }
+
+      if (roomName.startsWith("capture-")) {
+        const capture = findCaptureByRoom(roomName);
+
+        // Agent completed successfully → start all 3 egresses
+        if (parsed.announced === true && capture && capture.status === "active") {
+          try {
+            await startEgressForCapture(capture, roomName);
+            logger.info(`[WEBHOOK] Egress started for ${roomName}`);
+          } catch (err: any) {
+            logger.error(`[WEBHOOK] Failed to start egress:`, err.message);
           }
-        } catch { /* metadata not consent JSON */ }
+        }
+
+        // Agent signaled failure (consent denied, timeout, disconnect)
+        if (parsed.announced === false && capture && (capture.status === "active" || capture.status === "calling")) {
+          logger.info({ captureId: capture.id, error: parsed.error }, "[WEBHOOK] Agent signaled failure");
+          if (capture.status === "active") captureActiveGauge.dec();
+          capture.status = "ended";
+          capture.endedAt = new Date().toISOString();
+          capture.durationSeconds = 0;
+          await dbq.updateCapture(capture.id, {
+            status: "ended", endedAt: new Date(), durationSeconds: 0,
+          }).catch((e) => logger.error("[DB] metadata failure update failed:", e.message));
+          roomService.deleteRoom(roomName).catch(() => {});
+        }
       }
     }
 
-    // ── participant_joined ────────────
+    // ── participant_joined (tracking only — egress starts after announcement) ────────────
     if (event.event === "participant_joined" && event.room && event.participant) {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
       if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
-        const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
+        const capture = findCaptureByRoom(roomName);
         if (capture) {
           if (!capture._joinedCallers) capture._joinedCallers = new Set();
           capture._joinedCallers.add(identity);
-          const joined = capture._joinedCallers;
-          logger.info(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...joined].join(", ")}`);
-
-          if (joined.size >= 2 && !capture._egressStarting && !capture.egressId && capture.status !== "ended") {
-            capture._egressStarting = true;
-            capture.egressId = "PENDING";
-            try {
-              await new Promise((r) => setTimeout(r, 1000));
-
-              const mixedOutput = createS3FileOutput(capture.id);
-              const mixedEgress = await egressClient.startRoomCompositeEgress(
-                roomName, { file: mixedOutput }, { audioOnly: true },
-              );
-              capture.egressId = mixedEgress.egressId;
-              await dbq.updateCapture(capture.id, { egressId: capture.egressId })
-                .catch((e) => logger.error({ captureId: capture.id }, "[DB] egressId update failed:", e.message));
-              logger.info(`[WEBHOOK] Mixed egress started: ${mixedEgress.egressId}`);
-
-              for (const callerId of ["caller_a", "caller_b"]) {
-                try {
-                  const speakerOutput = createS3FileOutput(capture.id, callerId);
-                  await egressClient.startParticipantEgress(roomName, callerId, { file: speakerOutput });
-                  egressSuccessTotal.inc({ type: callerId });
-                  logger.info(`[WEBHOOK] ${callerId} egress started`);
-                } catch (err: any) {
-                  egressFailureTotal.inc();
-                  logger.error(`[WEBHOOK] ${callerId} egress failed:`, err.message);
-                }
-              }
-            } catch (err: any) {
-              capture.egressId = undefined;
-              capture._egressStarting = false;
-              egressFailureTotal.inc();
-              logger.error(`[WEBHOOK] Failed to start egress:`, err.message);
-            }
-          }
+          logger.info(`[WEBHOOK] ${identity} joined ${roomName}. Callers in room: ${[...capture._joinedCallers].join(", ")}`);
         }
       }
     }
@@ -112,36 +90,59 @@ router.post("/livekit/webhook", async (req, res) => {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
-      // ── Capture room: caller left → remove the other caller immediately
+      // ── Capture room: caller left during recording → stop egress + cleanup
+      // Only handle "active" status — during "calling" (consent phase), SIP bridges
+      // can flicker (connection_aborted → participant_left → re-join). The agent
+      // handles consent timeouts internally. Don't abort prematurely.
       if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
-        const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
-        if (capture) {
+        const capture = findCaptureByRoom(roomName);
+        if (capture && capture.status === "active") {
           capture._joinedCallers?.delete(identity);
           const remaining = capture._joinedCallers?.size ?? 0;
           logger.info(`[WEBHOOK] ${identity} left ${roomName}. Callers remaining: ${remaining}`);
 
-          // Immediately disconnect the other caller — don't leave them hanging
-          if (remaining > 0 && capture.status === "active") {
+          // CRITICAL: Stop all egresses FIRST for synchronized recording duration
+          // This must happen before any participant removal or room deletion
+          if (capture._egressIds?.length) {
+            try {
+              await Promise.all(
+                capture._egressIds.map((eid) =>
+                  egressClient.stopEgress(eid)
+                    .catch((e: any) => logger.warn(`[CLEANUP] stopEgress ${eid} failed:`, e.message)),
+                ),
+              );
+              logger.info(`[WEBHOOK] All egresses stopped for ${capture.id}`);
+
+              // Wait for LiveKit to finalize recordings (important!)
+              // RoomCompositeEgress needs time to flush buffered audio before room deletion
+              await new Promise((r) => setTimeout(r, 1000));
+            } catch (err: any) {
+              logger.error(`[WEBHOOK] Egress stop failed:`, err.message);
+            }
+          }
+
+          // Update capture status AFTER egress is stopped
+          captureActiveGauge.dec();
+          capture.status = "ended";
+          capture.endedAt = new Date().toISOString();
+          capture.durationSeconds = calculateDuration(capture.startedAt);
+          await dbq.updateCapture(capture.id, {
+            status: "ended",
+            endedAt: new Date(capture.endedAt),
+            durationSeconds: capture.durationSeconds,
+          }).catch((e) => logger.error({ captureId: capture.id }, "[DB] participant_left update failed:", e.message));
+          logger.info(`[WEBHOOK] Capture ${capture.id} ended (caller left)`);
+
+          // Remove the other caller after egress is stopped
+          if (remaining > 0) {
             const otherCaller = identity === "caller_a" ? "caller_b" : "caller_a";
             logger.info(`[WEBHOOK] Removing ${otherCaller} from ${roomName} (partner left)`);
             roomService.removeParticipant(roomName, otherCaller)
               .catch((e) => logger.warn(`[CLEANUP] removeParticipant ${otherCaller} failed:`, e.message));
           }
 
-          if (capture.status === "active") {
-            captureActiveGauge.dec();
-            capture.status = "ended";
-            capture.endedAt = new Date().toISOString();
-            capture.durationSeconds = calculateDuration(capture.startedAt);
-            await dbq.updateCapture(capture.id, {
-              status: "ended",
-              endedAt: new Date(capture.endedAt),
-              durationSeconds: capture.durationSeconds,
-            }).catch((e) => logger.error({ captureId: capture.id }, "[DB] participant_left update failed:", e.message));
-            logger.info(`[WEBHOOK] Capture ${capture.id} ended (caller left)`);
-
-            roomService.deleteRoom(roomName).catch((e) => logger.warn("[CLEANUP]", e.message));
-          }
+          // Finally, delete room (after egress stopped and finalized)
+          roomService.deleteRoom(roomName).catch((e) => logger.warn("[CLEANUP] deleteRoom failed:", e.message));
         }
       }
     }
@@ -149,7 +150,7 @@ router.post("/livekit/webhook", async (req, res) => {
     // ── room_finished (fallback) ────────────
     if (event.event === "room_finished" && event.room) {
       const roomName = event.room.name;
-      const capture = Array.from(activeCaptures.values()).find((c) => c.roomName === roomName);
+      const capture = findCaptureByRoom(roomName);
       if (capture && capture.status === "active") {
         captureActiveGauge.dec();
         capture.status = "ended";
@@ -215,13 +216,8 @@ router.post("/livekit/webhook", async (req, res) => {
 
         logger.info({ captureId: row.id, field }, "[WEBHOOK] Recording URL saved");
 
-        // Update in-memory cache
         const cached = activeCaptures.get(row.id);
-        if (cached) {
-          if (field === "recordingUrl") cached.recordingUrl = fileUrl;
-          if (field === "recordingUrlA") cached.recordingUrlA = fileUrl;
-          if (field === "recordingUrlB") cached.recordingUrlB = fileUrl;
-        }
+        if (cached) cached[field] = fileUrl;
 
         // If this webhook completed the set → enqueue processing job
         if (ready) {

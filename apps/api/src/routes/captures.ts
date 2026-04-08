@@ -1,18 +1,16 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { TwirpError } from "livekit-server-sdk";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
-import { roomService, sipClient, agentDispatch } from "../lib/livekit";
+import { roomService, agentDispatch, egressClient } from "../lib/livekit";
+import { csvQueue } from "@repo/queues";
 import * as dbq from "@repo/db";
 import { logger } from "../logger";
 import { env } from "../env";
 import { toApiCapture, calculateDuration } from "../lib/helpers";
+import { startEgressForCapture } from "../lib/egress";
 import { activeCaptures } from "../services/state";
-import { waitForConsent } from "../services/consent";
 import { captureTotal, captureActiveGauge, callDurationHistogram } from "../metrics";
 import type { Capture } from "@repo/types";
-
-const { LIVEKIT_SIP_TRUNK_ID } = env;
 const router = Router();
 
 // List captures (cursor-paginated)
@@ -113,7 +111,7 @@ router.post("/api/captures", requireAuth, async (req: AuthRequest, res) => {
   res.json(capture);
 });
 
-// Start capture — 3-room consent + parallel dial
+// Start capture — create room, dispatch agent (agent handles dialing + consent + announce)
 router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) => {
   const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
@@ -126,126 +124,103 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
   }
 
   capture.status = "calling";
-
-  const consentRoomA = `consent-${capture.id}-a`;
-  const consentRoomB = `consent-${capture.id}-b`;
+  const roomName = capture.roomName!;
 
   try {
-    await Promise.all([
-      roomService.createRoom({ name: consentRoomA, emptyTimeout: 120, maxParticipants: 4 }),
-      roomService.createRoom({ name: consentRoomB, emptyTimeout: 120, maxParticipants: 4 }),
-      roomService.createRoom({ name: capture.roomName!, emptyTimeout: 300, maxParticipants: 10 }),
-    ]);
-    logger.info(`[CAPTURE] Rooms created: ${consentRoomA}, ${consentRoomB}, ${capture.roomName}`);
+    // 1. Create room
+    await roomService.createRoom({
+      name: roomName,
+      emptyTimeout: 120,
+      departureTimeout: 15,
+      maxParticipants: 10,
+    });
 
-    await Promise.all([
-      agentDispatch.createDispatch(consentRoomA, "telephony-agent", {
-        metadata: JSON.stringify({ type: "consent" }),
+    // 2. Dispatch agent — it dials phones, handles consent + announce, signals egress
+    await agentDispatch.createDispatch(roomName, "telephony-agent", {
+      metadata: JSON.stringify({
+        captureId: capture.id,
+        phoneA: capture.phoneA,
+        phoneB: capture.phoneB,
+        sipTrunkId: env.LIVEKIT_SIP_TRUNK_ID,
       }),
-      agentDispatch.createDispatch(consentRoomB, "telephony-agent", {
-        metadata: JSON.stringify({ type: "consent" }),
-      }),
-    ]);
-    logger.info(`[CAPTURE] Consent agents dispatched`);
+    });
 
-    await dbq.updateCapture(capture.id, { status: "calling" });
+    capture.startedAt = new Date().toISOString();
+    capture.status = "active";
+    captureActiveGauge.inc();
+    await dbq.updateCapture(capture.id, {
+      status: "active",
+      startedAt: new Date(capture.startedAt),
+    });
+    logger.info(`[CAPTURE] Room + agent dispatched: ${roomName}`);
   } catch (err: any) {
     capture.status = "created";
     logger.error("[CAPTURE] Setup failed:", err.message);
-    roomService.deleteRoom(consentRoomA).catch(() => {});
-    roomService.deleteRoom(consentRoomB).catch(() => {});
-    roomService.deleteRoom(capture.roomName!).catch(() => {});
+    roomService.deleteRoom(roomName).catch(() => {});
     res.status(500).json({ error: err.message });
     return;
   }
 
-  res.json({ status: "calling", roomName: capture.roomName });
+  res.json({ status: "calling", roomName });
 
-  // Background: 150s hard deadline (30s ring + 60s DTMF + 60s buffer)
+  // 150s hard deadline — safety net for agent crashes
   const bgDeadline = setTimeout(() => {
-    if (capture.status === "calling") {
-      logger.error({ captureId: capture.id }, "[CAPTURE] Background flow timed out (150s)");
+    if (capture.status === "active") {
+      logger.error({ captureId: capture.id }, "[CAPTURE] Hard timeout (150s)");
+      captureActiveGauge.dec();
       capture.status = "ended";
       capture.endedAt = new Date().toISOString();
-      capture.durationSeconds = 0;
-      dbq.updateCapture(capture.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 })
-        .catch((e) => logger.error("[CAPTURE] DB sync failed:", e.message));
-      roomService.deleteRoom(consentRoomA).catch((e) => logger.warn("[CLEANUP]", e.message));
-      roomService.deleteRoom(consentRoomB).catch((e) => logger.warn("[CLEANUP]", e.message));
-      roomService.deleteRoom(capture.roomName!).catch((e) => logger.warn("[CLEANUP]", e.message));
+      capture.durationSeconds = calculateDuration(capture.startedAt);
+      dbq.updateCapture(capture.id, {
+        status: "ended", endedAt: new Date(), durationSeconds: capture.durationSeconds ?? 0,
+      }).catch((e) => logger.error("[CAPTURE] DB sync failed:", e.message));
+      roomService.deleteRoom(roomName).catch(() => {});
     }
   }, 150_000);
 
+  // Poll for agent completion — egress start or failure
   (async () => {
-    const cleanupRoom = (name: string) =>
-      roomService.deleteRoom(name).catch((e) => logger.warn({ room: name }, "[CLEANUP] deleteRoom failed:", e.message));
-    const cleanup = () => Promise.all([cleanupRoom(consentRoomA), cleanupRoom(consentRoomB), cleanupRoom(capture.roomName!)]);
-
     try {
-      const RING_TIMEOUT_MS = 30_000;
-      const ringTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Ring timeout: phones didn't answer within 30s")), RING_TIMEOUT_MS),
-      );
+      await new Promise((r) => setTimeout(r, 1000));
 
-      const dialBoth = Promise.all([
-        sipClient.createSipParticipant(LIVEKIT_SIP_TRUNK_ID!, capture.phoneA, consentRoomA, {
-          participantIdentity: "caller_a", participantName: "Phone A",
-          krispEnabled: true, waitUntilAnswered: true,
-        }),
-        sipClient.createSipParticipant(LIVEKIT_SIP_TRUNK_ID!, capture.phoneB, consentRoomB, {
-          participantIdentity: "caller_b", participantName: "Phone B",
-          krispEnabled: true, waitUntilAnswered: true,
-        }),
-      ]);
-
-      await Promise.race([dialBoth, ringTimeout]);
-      logger.info(`[CAPTURE] Both phones answered`);
-
-      const [consentA, consentB] = await Promise.all([
-        waitForConsent(consentRoomA),
-        waitForConsent(consentRoomB),
-      ]);
-
-      if (!consentA || !consentB) {
-        logger.info({ consentA, consentB, captureId: capture.id }, "[CAPTURE] Consent denied");
-        throw new Error("Consent denied");
+      const pollDeadline = Date.now() + 120_000;
+      while (Date.now() < pollDeadline && !capture._egressIds?.length && capture.status === "active") {
+        try {
+          const rooms = await roomService.listRooms([roomName]);
+          const room = rooms[0];
+          if (room?.metadata) {
+            const parsed = JSON.parse(room.metadata);
+            if (parsed.announced === true && !capture._egressStarting) {
+              logger.info(`[CAPTURE] Agent done — starting egress for ${capture.id}`);
+              try {
+                await startEgressForCapture(capture, roomName);
+              } catch (egressErr: any) {
+                logger.error({ captureId: capture.id, error: egressErr.message }, "[CAPTURE] Egress start failed");
+                throw new Error(`Agent: egress_start_failed`);
+              }
+              break;
+            }
+            if (parsed.announced === false) {
+              logger.info({ captureId: capture.id, error: parsed.error }, "[CAPTURE] Agent signaled failure");
+              throw new Error(`Agent: ${parsed.error || "consent denied"}`);
+            }
+          }
+        } catch (err: any) {
+          if (err.message.startsWith("Agent:")) throw err;
+          logger.debug(`[CAPTURE] Poll error: ${err.message}`);
+        }
+        await new Promise((r) => setTimeout(r, 1000));
       }
-
-      logger.info(`[CAPTURE] Both consented — moving to ${capture.roomName}`);
-
-      await Promise.all([
-        roomService.moveParticipant(consentRoomA, "caller_a", capture.roomName!),
-        roomService.moveParticipant(consentRoomB, "caller_b", capture.roomName!),
-      ]);
-
-      // Announce "both connected" in the capture room
-      agentDispatch.createDispatch(capture.roomName!, "telephony-agent", {
-          metadata: JSON.stringify({ type: "announce" }),
-        }).catch((e) => logger.warn("[CAPTURE] Announce dispatch failed:", e.message));
-
-      capture.startedAt = new Date().toISOString();
-      capture.status = "active";
-      captureActiveGauge.inc();
-      await dbq.updateCapture(capture.id, {
-        status: "active",
-        startedAt: new Date(capture.startedAt),
-      });
-      logger.info(`[CAPTURE] Active: ${capture.id}`);
-
-      cleanupRoom(consentRoomA);
-      cleanupRoom(consentRoomB);
-
     } catch (err: any) {
-      const sipCode = err instanceof TwirpError ? err.metadata?.["sip_status_code"] : undefined;
-      logger.error({ sipCode, reason: err.message, captureId: capture.id }, "[CAPTURE] Call failed");
-
+      logger.error({ reason: err.message, captureId: capture.id }, "[CAPTURE] Flow failed");
+      if (capture.status === "active") captureActiveGauge.dec();
       capture.status = "ended";
       capture.endedAt = new Date().toISOString();
-      capture.durationSeconds = 0;
+      capture.durationSeconds = calculateDuration(capture.startedAt);
       await dbq.updateCapture(capture.id, {
-        status: "ended", endedAt: new Date(), durationSeconds: 0,
-      }).catch((e) => logger.error({ captureId: capture.id }, "[DB] Failed to update ended:", e.message));
-      await cleanup();
+        status: "ended", endedAt: new Date(), durationSeconds: capture.durationSeconds ?? 0,
+      }).catch((e) => logger.error({ captureId: capture.id }, "[DB] update failed:", e.message));
+      roomService.deleteRoom(roomName).catch(() => {});
     } finally {
       clearTimeout(bgDeadline);
     }
@@ -261,6 +236,21 @@ router.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) 
   }
 
   try {
+    // Stop all egresses with synchronized finalization (same as webhook handler)
+    if (capture._egressIds?.length) {
+      await Promise.all(
+        capture._egressIds.map((eid) =>
+          egressClient.stopEgress(eid)
+            .catch((e: any) => logger.warn(`[CLEANUP] stopEgress ${eid} failed:`, e.message)),
+        ),
+      );
+      logger.info(`[CAPTURE] All egresses stopped for ${capture.id}`);
+
+      // Wait for LiveKit to finalize all egress recordings
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    // Delete room after egress finalization
     await roomService.deleteRoom(capture.roomName!);
     logger.info(`[CAPTURE] Room deleted: ${capture.roomName}`);
 
@@ -281,6 +271,50 @@ router.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) 
     res.json({ status: "ended", durationSeconds: capture.durationSeconds });
   } catch (err: any) {
     logger.error("[CAPTURE] End failed:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Edit transcript utterance + trigger CSV regeneration
+router.patch("/api/captures/:id/transcript", requireAuth, async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+  const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
+  if (!capture) { res.status(404).json({ error: "Not found" }); return; }
+  if (capture.userId !== req.userId) {
+    res.status(403).json({ error: "Forbidden" }); return;
+  }
+
+  const { participant, index, text } = req.body;
+  if (!participant || typeof index !== "number" || typeof text !== "string") {
+    res.status(400).json({ error: "Required: participant (a|b), index (number), text (string)" });
+    return;
+  }
+
+  try {
+    const field = participant === "a" ? "transcriptA" : "transcriptB";
+    const raw = (capture as any)[field] as string | null;
+    if (!raw) { res.status(400).json({ error: "No transcript for this participant" }); return; }
+
+    const utterances = JSON.parse(raw);
+    if (index < 0 || index >= utterances.length) {
+      res.status(400).json({ error: `Index ${index} out of range (0-${utterances.length - 1})` });
+      return;
+    }
+
+    utterances[index].text = text;
+    const updated = JSON.stringify(utterances);
+
+    await dbq.updateCapture(id, { [field]: updated });
+    logger.info({ captureId: id, participant, index }, "[CAPTURE] Transcript edited");
+
+    // Enqueue lightweight CSV regeneration (no re-transcription)
+    await csvQueue.add("csv-regen", { captureId: id }, {
+      jobId: `csv-regen-${id}-${Date.now()}`,
+    });
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error({ captureId: id, error: err.message }, "[CAPTURE] Transcript edit failed");
     res.status(500).json({ error: err.message });
   }
 });

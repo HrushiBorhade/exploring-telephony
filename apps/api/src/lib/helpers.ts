@@ -8,6 +8,6 @@ export function calculateDuration(startedAt?: string | null): number {
 
 /** Strip internal runtime fields before sending to client */
 export function toApiCapture(c: any) {
-  const { _joinedCallers, _egressStarting, ...safe } = c;
+  const { _joinedCallers, _egressStarting, _egressIds, ...safe } = c;
   return safe;
 }
