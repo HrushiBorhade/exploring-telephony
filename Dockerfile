@@ -28,6 +28,7 @@ RUN esbuild apps/api/src/server.ts \
     --outfile=dist/server.js \
     --packages=external \
     --alias:@repo/db=./packages/db/src/index.ts \
+    --alias:@repo/db/migrate=./packages/db/src/migrate.ts \
     --alias:@repo/types=./packages/types/src/index.ts \
     --alias:@repo/queues=./packages/queues/src/index.ts \
     --sourcemap

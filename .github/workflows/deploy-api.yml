@@ -43,15 +43,9 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/telephony-github-actions-deploy
           aws-region: ${{ env.AWS_REGION }}
 
-      # Run migrations BEFORE deploying new code.
-      # Gets DATABASE_URL from Secrets Manager, runs drizzle-kit migrate.
-      # If migration fails, deployment stops — no broken code goes live.
-      - name: Run database migrations
-        env:
-          SECRET_ARN: arn:aws:secretsmanager:ap-south-1:${{ secrets.AWS_ACCOUNT_ID }}:secret:telephony/prod/app-secrets-ZlrHwv
-        run: |
-          DB_URL=$(aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query 'SecretString' --output text | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).DATABASE_URL))")
-          DATABASE_URL="$DB_URL" NODE_ENV=production npx drizzle-kit migrate
+      # Migrations run on container startup (inside VPC where RDS is reachable).
+      # See apps/api/src/server.ts — runMigrations() with pg advisory lock.
+      # If migration fails, container exits -> ECS circuit breaker rolls back.
 
       - name: Login to Amazon ECR
         id: login-ecr
