@@ -44,11 +44,11 @@ function CardSkeleton() {
   return (
     <Card className="bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card">
       <CardHeader>
-        <Skeleton className="h-4 w-24 skeleton-shimmer" />
-        <Skeleton className="h-9 w-16 skeleton-shimmer" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-9 w-16" />
       </CardHeader>
       <CardContent>
-        <Skeleton className="h-4 w-32 skeleton-shimmer" />
+        <Skeleton className="h-4 w-32" />
       </CardContent>
     </Card>
   );

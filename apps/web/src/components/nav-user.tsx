@@ -50,8 +50,8 @@ export function NavUser({
               <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
             }
           >
-            <Avatar className="size-8 rounded-lg grayscale">
-              <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+            <Avatar className="size-8">
+              <AvatarFallback>{initials}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className={`truncate font-medium text-xs ${isPhone ? "font-mono" : ""}`}>{displayName}</span>

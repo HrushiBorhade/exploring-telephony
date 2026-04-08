@@ -101,8 +101,13 @@ function OnboardingContent() {
     );
   }
 
-  if (profile.onboardingCompleted) {
-    router.replace("/capture");
+  useEffect(() => {
+    if (profile?.onboardingCompleted) {
+      router.replace("/capture");
+    }
+  }, [profile?.onboardingCompleted, router]);
+
+  if (profile?.onboardingCompleted) {
     return null;
   }
 

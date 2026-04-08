@@ -43,19 +43,29 @@ function formatRelativeTime(date: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+const skeletonWidths = [
+  { name: "w-24", phones: "w-40", status: "w-20", dur: "w-10", time: "w-14" },
+  { name: "w-32", phones: "w-44", status: "w-18", dur: "w-8",  time: "w-16" },
+  { name: "w-20", phones: "w-36", status: "w-22", dur: "w-10", time: "w-12" },
+];
+
 function SkeletonRows({ count = 3 }: { count?: number }) {
   return (
     <>
-      {Array.from({ length: count }).map((_, i) => (
-        <TableRow key={`skeleton-${i}`}>
-          <TableCell className="pl-6"><Skeleton className="h-4 w-28 skeleton-shimmer" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-44 skeleton-shimmer" /></TableCell>
-          <TableCell><Skeleton className="h-5 w-20 rounded-full skeleton-shimmer" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-10 skeleton-shimmer" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-16 skeleton-shimmer" /></TableCell>
-          <TableCell className="pr-6"><Skeleton className="h-4 w-4 ml-auto skeleton-shimmer" /></TableCell>
-        </TableRow>
-      ))}
+      {Array.from({ length: count }).map((_, i) => {
+        const w = skeletonWidths[i % skeletonWidths.length];
+        const delay = `${i * 75}ms`;
+        return (
+          <TableRow key={`skeleton-${i}`}>
+            <TableCell className="pl-6"><Skeleton className={`h-4 ${w.name}`} /></TableCell>
+            <TableCell><Skeleton className={`h-4 ${w.phones}`} /></TableCell>
+            <TableCell><Skeleton className={`h-5 ${w.status} rounded-full`} /></TableCell>
+            <TableCell><Skeleton className={`h-4 ${w.dur}`} /></TableCell>
+            <TableCell><Skeleton className={`h-4 ${w.time}`} /></TableCell>
+            <TableCell className="pr-6"><Skeleton className="h-4 w-4 ml-auto" /></TableCell>
+          </TableRow>
+        );
+      })}
     </>
   );
 }
