@@ -212,3 +212,18 @@ export function useEndCapture(id: string) {
     },
   });
 }
+
+export function useUpdateTranscript(captureId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { participant: "a" | "b"; index: number; text: string }) =>
+      postJson(`${API}/api/captures/${captureId}/transcript`, data, "PATCH"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: captureKeys.detail(captureId) });
+    },
+    onError: (err) => {
+      toast.error(`Failed to update: ${err.message}`);
+    },
+  });
+}

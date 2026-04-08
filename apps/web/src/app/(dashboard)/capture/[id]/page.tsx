@@ -1,17 +1,18 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { LoaderCircle, Download } from "lucide-react";
+import { LoaderCircle, Download, Pencil, Check, X, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetTrigger } from "@/components/ui/sheet";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
-import { useState, useMemo, memo } from "react";
+import { useState, useMemo, useCallback, memo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
-import { useCapture, useStartCapture, useEndCapture, proxyAudioUrl } from "@/lib/api";
+import { toast } from "sonner";
+import { useCapture, useStartCapture, useEndCapture, useUpdateTranscript, proxyAudioUrl } from "@/lib/api";
 import type { Utterance } from "@/lib/types";
 
 function fmt(s?: number | null) {
@@ -55,16 +56,16 @@ function DetailSkeleton() {
       <div className="flex items-center justify-between px-4 lg:px-6 py-3 border-b">
         <div className="flex items-center gap-3 min-w-0">
           <div className="space-y-1.5 min-w-0">
-            <Skeleton className="h-4 w-40 skeleton-shimmer" />
-            <Skeleton className="h-3 w-56 skeleton-shimmer" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-56" />
           </div>
         </div>
-        <Skeleton className="h-6 w-28 rounded-full shrink-0 skeleton-shimmer" />
+        <Skeleton className="h-6 w-28 rounded-full shrink-0" />
       </div>
       <div className="flex-1 flex items-center justify-center p-4 lg:p-6">
         <div className="w-full max-w-3xl space-y-4">
-          <Skeleton className="h-40 w-full rounded-xl skeleton-shimmer" />
-          <Skeleton className="h-24 w-full rounded-xl skeleton-shimmer" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
         </div>
       </div>
     </>
@@ -88,52 +89,178 @@ function parseUtterances(raw: string | null | undefined, captureId: string): Utt
   }
 }
 
-const UtteranceRow = memo(function UtteranceRow({
-  u,
-  color,
-  index,
-}: {
-  u: Utterance;
+interface ConversationTurn {
+  participant: "a" | "b";
+  utterance: Utterance;
   color: string;
+  label: string;
+  originalIndex: number;
+}
+
+const ConversationBubble = memo(function ConversationBubble({
+  turn,
+  index,
+  onEdit,
+  isSaving,
+}: {
+  turn: ConversationTurn;
   index: number;
+  onEdit?: (text: string) => void;
+  isSaving?: boolean;
 }) {
-  const emoCls = emotionClassName[u.emotion] ?? emotionClassName.neutral;
+  const isA = turn.participant === "a";
+  const emoCls = emotionClassName[turn.utterance.emotion] ?? emotionClassName.neutral;
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(turn.utterance.text);
+
+  const handleSave = useCallback(() => {
+    if (editText.trim() && editText !== turn.utterance.text) {
+      onEdit?.(editText.trim());
+    }
+    setEditing(false);
+  }, [editText, turn.utterance.text, onEdit]);
+
+  const handleCancel = useCallback(() => {
+    setEditText(turn.utterance.text);
+    setEditing(false);
+  }, [turn.utterance.text]);
+
   return (
     <div
-      className="group rounded-lg px-2 py-2 transition-colors hover:bg-muted/40"
+      className={`flex gap-2.5 ${isA ? "" : "flex-row-reverse"}`}
       style={{
         animation: "fade-in-up 0.3s ease-out backwards",
-        animationDelay: `${index * 30}ms`,
+        animationDelay: `${index * 40}ms`,
       }}
     >
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-mono text-muted-foreground shrink-0 tabular-nums leading-none">
-          {fmtTimestamp(u.start)}&ndash;{fmtTimestamp(u.end)}
-        </span>
-        <span className="flex-1 text-sm leading-snug min-w-0 break-words">{u.text}</span>
-        <div className="shrink-0 flex items-center gap-1.5">
-          <span className={`text-[10px] ${emoCls}`}>{u.emotion}</span>
-          <span className="text-[10px] text-muted-foreground uppercase">{u.language}</span>
+      {/* Participant indicator */}
+      <div className="flex flex-col items-center gap-1 pt-1 shrink-0">
+        <div
+          className="size-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+          style={{ backgroundColor: turn.color }}
+        >
+          {turn.participant.toUpperCase()}
         </div>
       </div>
-      {u.audioUrl && (
-        <div className="mt-1.5 ml-0">
-          <WaveformPlayer url={u.audioUrl} label="" accentColor={color} />
+
+      {/* Bubble */}
+      <div className={`max-w-[80%] space-y-1 ${isA ? "" : "items-end"}`}>
+        <div
+          className={`group relative rounded-2xl px-3 py-2 ${
+            isA
+              ? "rounded-tl-sm bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/30"
+              : "rounded-tr-sm bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200/50 dark:border-zinc-700/30"
+          } ${editing ? "ring-2 ring-primary/30" : ""}`}
+        >
+          {editing ? (
+            <div className="space-y-1.5">
+              <textarea
+                className="w-full text-sm leading-snug bg-transparent outline-none resize-none min-h-[2em]"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSave(); } if (e.key === "Escape") handleCancel(); }}
+                autoFocus
+                rows={2}
+              />
+              <div className="flex gap-1 justify-end">
+                <button onClick={handleCancel} className="p-0.5 rounded hover:bg-muted"><X className="size-3.5 text-muted-foreground" /></button>
+                <button onClick={handleSave} className="p-0.5 rounded hover:bg-muted"><Check className="size-3.5 text-emerald-600" /></button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm leading-snug break-words">{turn.utterance.text}</p>
+              {onEdit && (
+                <button
+                  onClick={() => { setEditText(turn.utterance.text); setEditing(true); }}
+                  className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-background border border-border shadow-sm hover:bg-muted"
+                >
+                  {isSaving ? <LoaderCircle className="size-3 animate-spin" /> : <Pencil className="size-3 text-muted-foreground" />}
+                </button>
+              )}
+            </>
+          )}
         </div>
-      )}
+
+        {/* Meta row */}
+        <div className={`flex items-center gap-2 px-1 ${isA ? "" : "flex-row-reverse"}`}>
+          <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+            {fmtTimestamp(turn.utterance.start)}
+          </span>
+          <span className={`text-[10px] ${emoCls}`}>{turn.utterance.emotion}</span>
+          <span className="text-[10px] text-muted-foreground uppercase">{turn.utterance.language}</span>
+        </div>
+
+        {/* Audio clip */}
+        {turn.utterance.audioUrl && (
+          <div className="mt-0.5">
+            <WaveformPlayer url={turn.utterance.audioUrl} label="" accentColor={turn.color} />
+          </div>
+        )}
+      </div>
     </div>
   );
 });
 
-function UtteranceList({ utterances, color }: { utterances: Utterance[]; color: string }) {
-  if (utterances.length === 0) {
+function ConversationView({ utterancesA, utterancesB, phoneA, phoneB, onEditUtterance, savingKey }: {
+  utterancesA: Utterance[];
+  utterancesB: Utterance[];
+  phoneA: string;
+  phoneB: string;
+  onEditUtterance?: (participant: "a" | "b", index: number, text: string) => void;
+  savingKey?: string | null;
+}) {
+  const turns = useMemo(() => {
+    const all: ConversationTurn[] = [
+      ...utterancesA.map((u, i) => ({ participant: "a" as const, utterance: u, color: participantColor.a, label: phoneA, originalIndex: i })),
+      ...utterancesB.map((u, i) => ({ participant: "b" as const, utterance: u, color: participantColor.b, label: phoneB, originalIndex: i })),
+    ];
+    // Sort by start time. For overlapping utterances (same start time),
+    // keep the one that started first, then the one that overlaps.
+    // This preserves natural conversation order even when people talk over each other.
+    return all.sort((a, b) => {
+      const diff = a.utterance.start - b.utterance.start;
+      if (Math.abs(diff) < 0.01) return a.participant === "a" ? -1 : 1; // Stable tie-break
+      return diff;
+    });
+  }, [utterancesA, utterancesB, phoneA, phoneB]);
+
+  // Detect overlaps: mark turns that overlap with the previous turn
+  const overlaps = useMemo(() => {
+    const set = new Set<number>();
+    for (let i = 1; i < turns.length; i++) {
+      const prev = turns[i - 1];
+      const curr = turns[i];
+      // Overlap: current starts before previous ends AND they're different speakers
+      if (curr.utterance.start < prev.utterance.end && curr.participant !== prev.participant) {
+        set.add(i);
+      }
+    }
+    return set;
+  }, [turns]);
+
+  if (turns.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">No utterances detected</p>;
   }
 
   return (
-    <div className="space-y-px pt-2">
-      {utterances.map((u, i) => (
-        <UtteranceRow key={`${i}-${u.start}-${u.end}`} u={u} color={color} index={i} />
+    <div className="space-y-3 pt-2">
+      {turns.map((turn, i) => (
+        <div key={`${turn.participant}-${i}-${turn.utterance.start}`}>
+          {overlaps.has(i) && (
+            <div className="flex items-center gap-2 px-8 -mb-1">
+              <div className="flex-1 h-px bg-amber-300/40 dark:bg-amber-600/30" />
+              <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium uppercase tracking-wider">overlap</span>
+              <div className="flex-1 h-px bg-amber-300/40 dark:bg-amber-600/30" />
+            </div>
+          )}
+          <ConversationBubble
+            turn={turn}
+            index={i}
+            onEdit={onEditUtterance ? (text) => onEditUtterance(turn.participant, turn.originalIndex, text) : undefined}
+            isSaving={savingKey === `${turn.participant}-${turn.originalIndex}`}
+          />
+        </div>
       ))}
     </div>
   );
@@ -147,7 +274,13 @@ export default function CaptureDetailPage() {
   const { data: capture, isLoading, error } = useCapture(id);
   const startMutation = useStartCapture(id);
   const endMutation = useEndCapture(id);
+  const transcriptMutation = useUpdateTranscript(id);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [csvData, setCsvData] = useState<string[][] | null>(null);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvRegenerating, setCsvRegenerating] = useState(false);
+  const [pendingCsvReload, setPendingCsvReload] = useState(false);
 
   const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id), [capture?.transcriptA, id]);
   const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id), [capture?.transcriptB, id]);
@@ -169,6 +302,55 @@ export default function CaptureDetailPage() {
     () => capture?.datasetCsvUrl ? proxyAudioUrl(capture.datasetCsvUrl, id) : null,
     [capture?.datasetCsvUrl, id]
   );
+
+  const loadCsv = useCallback(async () => {
+    if (!datasetCsvProxyUrl) return;
+    setCsvLoading(true);
+    try {
+      const url = `${datasetCsvProxyUrl}${datasetCsvProxyUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+      const res = await fetch(url, { credentials: "include", redirect: "follow" });
+      const text = await res.text();
+      const rows = text.split("\n").filter(Boolean).map((row) => {
+        const cells: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        for (const ch of row) {
+          if (ch === '"') { inQuotes = !inQuotes; }
+          else if (ch === "," && !inQuotes) { cells.push(current); current = ""; }
+          else { current += ch; }
+        }
+        cells.push(current);
+        return cells;
+      });
+      setCsvData(rows);
+    } catch { setCsvData(null); }
+    finally { setCsvLoading(false); }
+  }, [datasetCsvProxyUrl]);
+
+  const handleEditUtterance = useCallback((participant: "a" | "b", index: number, text: string) => {
+    const key = `${participant}-${index}`;
+    setSavingKey(key);
+    setCsvRegenerating(true);
+    setPendingCsvReload(true);
+    transcriptMutation.mutate({ participant, index, text }, {
+      onSettled: () => setSavingKey(null),
+      onSuccess: () => {
+        toast.success("Transcript updated — CSV regenerating...");
+      },
+      onError: () => { setCsvRegenerating(false); setPendingCsvReload(false); },
+    });
+  }, [transcriptMutation]);
+
+  // After edit, wait for CSV worker to finish then reload CSV in Sheet
+  useEffect(() => {
+    if (!pendingCsvReload) return;
+    const timer = setTimeout(async () => {
+      if (csvData) await loadCsv();
+      setCsvRegenerating(false);
+      setPendingCsvReload(false);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [pendingCsvReload, csvData, loadCsv]);
 
   if (isLoading && !capture) return <DetailSkeleton />;
 
@@ -194,14 +376,16 @@ export default function CaptureDetailPage() {
 
   if (!capture) return <DetailSkeleton />;
 
-  const callFailed = capture.status === "ended" && !capture.startedAt;
+  // A capture "failed" if it ended without any recordings (consent denied, timeout, SIP error, etc.)
+  const hasRecordings = !!(capture.recordingUrl || capture.recordingUrlA || capture.recordingUrlB);
+  const callFailed = capture.status === "failed" || (capture.status === "ended" && !hasRecordings);
   const cfg = callFailed
     ? { label: "Call Failed", badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900", dot: "bg-red-500 dark:bg-red-400" }
     : (statusConfig[capture.status] ?? statusConfig.created);
 
   const isCompleted = capture.status === "completed";
   const isPreCall = capture.status === "created" || capture.status === "calling" || capture.status === "active";
-  const isProcessing = capture.status === "processing" || (capture.status === "ended" && capture.startedAt);
+  const isProcessing = capture.status === "processing" || (capture.status === "ended" && hasRecordings);
 
   return (
     <>
@@ -223,10 +407,66 @@ export default function CaptureDetailPage() {
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {isCompleted && datasetCsvProxyUrl && (
-            <Button variant="outline" size="sm" nativeButton={false} render={<a href={datasetCsvProxyUrl} download />}>
-              <Download className="size-3.5" />
-              CSV
-            </Button>
+            <Sheet>
+              <SheetTrigger render={<Button variant="outline" size="sm" onClick={loadCsv} />}>
+                <Table2 className="size-3.5" />
+                View CSV
+              </SheetTrigger>
+              <SheetContent side="right" style={{ maxWidth: "85vw" }}>
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    Dataset CSV
+                    {csvRegenerating && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-normal text-amber-600 dark:text-amber-400">
+                        <LoaderCircle className="size-3 animate-spin" />
+                        Regenerating...
+                      </span>
+                    )}
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="flex-1 overflow-auto px-4">
+                  {csvLoading ? (
+                    <div className="flex items-center justify-center py-12"><LoaderCircle className="size-6 animate-spin text-muted-foreground" /></div>
+                  ) : csvData && csvData.length > 1 ? (
+                    <div className="border rounded-lg overflow-x-auto">
+                      <table className="min-w-max text-[11px]">
+                        <thead className="sticky top-0 z-10">
+                          <tr className="bg-muted">
+                            {csvData[0].map((h, i) => (
+                              <th key={i} className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap border-b">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csvData.slice(1).map((row, ri) => (
+                            <tr key={ri} className="border-t border-border/40 hover:bg-muted/30 transition-colors">
+                              {row.map((cell, ci) => (
+                                <td key={ci} className="px-3 py-2 whitespace-nowrap max-w-[300px] truncate" title={cell}>{cell}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-6 text-center">No data available</p>
+                  )}
+                </div>
+                <SheetFooter>
+                  {csvRegenerating ? (
+                    <Button disabled>
+                      <LoaderCircle className="size-3.5 animate-spin" />
+                      Regenerating CSV...
+                    </Button>
+                  ) : (
+                    <Button nativeButton={false} render={<a href={datasetCsvProxyUrl} download />}>
+                      <Download className="size-3.5" />
+                      Download CSV
+                    </Button>
+                  )}
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
           )}
 
           <Badge variant="outline" className={`${cfg.badgeClass} whitespace-nowrap transition-colors duration-300 text-[10px] sm:text-xs`}>
@@ -368,31 +608,30 @@ export default function CaptureDetailPage() {
 
               {hasUtterances && (
                 <motion.div variants={fadeUp} className="space-y-1">
-                  <div className="py-2">
+                  <div className="py-2 flex items-center justify-between">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
-                      Utterances
+                      Conversation
                     </p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full" style={{ backgroundColor: participantColor.a }} />
+                        <span className="text-[10px] text-muted-foreground">A ({utterancesA.length})</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2 rounded-full" style={{ backgroundColor: participantColor.b }} />
+                        <span className="text-[10px] text-muted-foreground">B ({utterancesB.length})</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <Tabs defaultValue="a">
-                    <TabsList variant="line" className="w-full">
-                      <TabsTrigger value="a" className="min-w-0 text-xs sm:text-sm">
-                        <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: participantColor.a }} />
-                        <span className="truncate">A ({utterancesA.length})</span>
-                      </TabsTrigger>
-                      <TabsTrigger value="b" className="min-w-0 text-xs sm:text-sm">
-                        <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: participantColor.b }} />
-                        <span className="truncate">B ({utterancesB.length})</span>
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="a">
-                      <UtteranceList utterances={utterancesA} color={participantColor.a} />
-                    </TabsContent>
-                    <TabsContent value="b">
-                      <UtteranceList utterances={utterancesB} color={participantColor.b} />
-                    </TabsContent>
-                  </Tabs>
+                  <ConversationView
+                    utterancesA={utterancesA}
+                    utterancesB={utterancesB}
+                    phoneA={capture.phoneA}
+                    phoneB={capture.phoneB}
+                    onEditUtterance={handleEditUtterance}
+                    savingKey={savingKey}
+                  />
                 </motion.div>
               )}
             </>
