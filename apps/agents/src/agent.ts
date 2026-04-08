@@ -163,7 +163,7 @@ export default defineAgent({
     await session.start({
       agent: new voice.Agent({ instructions: "Telephony capture agent." }),
       room,
-      roomInputOptions: { closeOnDisconnect: false },
+      inputOptions: { closeOnDisconnect: false },
     });
     log("Session started");
 
