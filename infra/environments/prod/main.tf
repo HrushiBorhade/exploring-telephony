@@ -776,13 +776,19 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
       {
         Sid      = "ECSUpdate"
         Effect   = "Allow"
-        Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
+        Action   = ["ecs:UpdateService", "ecs:DescribeServices", "ecs:DescribeTaskDefinition"]
         Resource = "*"
         Condition = {
           ArnEquals = {
             "ecs:cluster" = module.ecs.cluster_arn
           }
         }
+      },
+      {
+        Sid      = "SecretsRead"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_secretsmanager_secret.app_secrets.arn]
       },
     ]
   })
