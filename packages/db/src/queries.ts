@@ -115,8 +115,10 @@ export async function setRecordingUrlAndCheckReady(
         sql`${schema.captures.recordingUrl} IS NOT NULL`,
         sql`${schema.captures.recordingUrlA} IS NOT NULL`,
         sql`${schema.captures.recordingUrlB} IS NOT NULL`,
-        // Only trigger if we haven't already enqueued (status is still "ended")
-        eq(schema.captures.status, "ended"),
+        // Trigger if status is "ended" OR "active" (egress_ended webhooks can
+        // arrive before participant_left sets status to "ended")
+        // Excludes "processing"/"completed" to prevent duplicate enqueue
+        sql`${schema.captures.status} IN ('ended', 'active')`,
       ),
     )
     .limit(1);

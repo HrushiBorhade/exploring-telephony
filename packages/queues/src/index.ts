@@ -15,10 +15,12 @@ export const audioQueue = new Queue("audio-processing", {
   },
 });
 
-export const emailQueue = new Queue("email", {
+export const csvQueue = new Queue("csv-regeneration", {
   connection: redisConnection,
   defaultJobOptions: {
     attempts: 3,
-    backoff: { type: "exponential", delay: 10000 },
+    backoff: { type: "exponential", delay: 2000 },
+    removeOnComplete: { count: 500 },
+    removeOnFail: { count: 1000 },
   },
 });
