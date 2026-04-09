@@ -26,10 +26,29 @@ process.on("unhandledRejection", (reason: any) => {
 
 const app = express();
 
-// Better Auth — MUST be mounted BEFORE express.json() (handles its own body parsing)
+// Trust proxy (required before any middleware)
+app.set("trust proxy", 1);
+
+// Better Auth — mounted BEFORE express.json() (handles its own body parsing).
+// CORS is handled manually here since setupMiddleware runs after.
 import { toNodeHandler } from "better-auth/node";
 import { auth } from "./lib/auth";
-app.all("/api/auth/*splat", toNodeHandler(auth));
+
+const ALLOWED_ORIGINS = env.NODE_ENV === "production"
+  ? [env.FRONTEND_URL].filter((v): v is string => !!v)
+  : ["http://localhost:3000", "http://localhost:8080", "http://localhost:3002"];
+
+app.all("/api/auth/*splat", (req, res, next) => {
+  const origin = req.headers.origin || "";
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+  }
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  if (req.method === "OPTIONS") { res.sendStatus(204); return; }
+  toNodeHandler(auth)(req, res);
+});
 
 setupMiddleware(app);
 
