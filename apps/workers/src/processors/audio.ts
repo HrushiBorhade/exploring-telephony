@@ -102,9 +102,9 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       uploadToS3(`captures/${captureId}/participant-b/full.mp3`, await readFile(callerBMp3), "audio/mpeg"),
     ]);
 
-    // ── Step 4: Transcribe with Gemini 2.5 Pro ──────────────────────
+    // ── Step 4: Transcribe with Gemini 3.1 Flash ────────────────────
     await job.updateProgress(35);
-    log.info("Step 4: Transcribing with Gemini 2.5 Pro");
+    log.info("Step 4: Transcribing with Gemini 3.1 Flash");
 
     const [resultA, resultB] = await Promise.all([
       transcribeWithGemini(await readFile(callerAMp3), "audio/mp3"),
