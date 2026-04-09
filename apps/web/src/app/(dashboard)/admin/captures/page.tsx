@@ -132,7 +132,7 @@ export default function AdminCapturesPage() {
       </motion.div>
 
       <motion.div variants={pageFadeUp} className="border rounded-lg overflow-hidden">
-        {isLoading ? (
+        {isLoading && allCaptures.length === 0 ? (
           <TableSkeleton />
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">No captures found</div>
