@@ -77,11 +77,6 @@ export default function AdminDashboard() {
       animate="visible"
       variants={pageStagger}
     >
-      <motion.div variants={pageFadeUp}>
-        <h1 className="text-xl font-semibold font-heading tracking-tight">Admin Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Platform overview and management</p>
-      </motion.div>
-
       <motion.div variants={pageFadeUp} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Users"
@@ -108,33 +103,31 @@ export default function AdminDashboard() {
       </motion.div>
 
       <motion.div variants={pageFadeUp} className="grid gap-4 sm:grid-cols-2">
-        <Card className="cursor-pointer hover:border-primary/30 transition-colors" onClick={() => router.push("/admin/users")}>
+        <Card className="bg-gradient-to-t from-primary/5 to-card cursor-pointer hover:from-primary/10 transition-colors" onClick={() => router.push("/admin/users")}>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="size-4" />
-              User Management
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">User Management</CardTitle>
+            <div className="text-2xl font-bold font-heading flex items-center gap-2">
+              <Users className="size-5" /> Users
+            </div>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
               View all users, manage roles, ban/unban, impersonate
             </p>
-            <ArrowRight className="size-4 text-muted-foreground" />
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/30 transition-colors" onClick={() => router.push("/admin/captures")}>
+        <Card className="bg-gradient-to-t from-primary/5 to-card cursor-pointer hover:from-primary/10 transition-colors" onClick={() => router.push("/admin/captures")}>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <PhoneCall className="size-4" />
-              All Captures
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">All Captures</CardTitle>
+            <div className="text-2xl font-bold font-heading flex items-center gap-2">
+              <PhoneCall className="size-5" /> Captures
+            </div>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
               Browse all captures across users, filter by status
             </p>
-            <ArrowRight className="size-4 text-muted-foreground" />
           </CardContent>
         </Card>
       </motion.div>
