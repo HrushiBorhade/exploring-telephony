@@ -17,3 +17,4 @@ infra/**/*.tfplan
 infra/**/.terraform.lock.hcl
 infra/**/crash.log
 infra/**/*.tfvars.json
+*.sqlite
