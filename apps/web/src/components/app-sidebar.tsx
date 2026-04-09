@@ -22,6 +22,9 @@ import {
   SettingsIcon,
   AudioWaveformIcon,
   PlusIcon,
+  ShieldIcon,
+  LayoutDashboardIcon,
+  UsersIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth-client";
@@ -32,6 +35,19 @@ const navMain = [
     title: "Captures",
     url: "/capture",
     icon: <PhoneCallIcon />,
+  },
+];
+
+const navAdmin = [
+  {
+    title: "Dashboard",
+    url: "/admin",
+    icon: <LayoutDashboardIcon />,
+  },
+  {
+    title: "Users",
+    url: "/admin/users",
+    icon: <UsersIcon />,
   },
 ];
 
@@ -48,6 +64,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: profileData } = useProfile();
   const router = useRouter();
 
+  const isAdmin = (session?.user as any)?.role === "admin";
   const phoneNumber = String((session?.user as Record<string, unknown>)?.phoneNumber ?? "");
   const profileName = profileData?.profile?.name;
   const user = {
@@ -101,6 +118,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <motion.div variants={staggerChild}>
             <NavMain items={navMain} />
           </motion.div>
+          {isAdmin && (
+            <motion.div variants={staggerChild}>
+              <NavMain items={navAdmin} label="Admin" />
+            </motion.div>
+          )}
           <motion.div variants={staggerChild} className="mt-auto">
             <NavSecondary items={navSecondary} />
           </motion.div>
