@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 
 const S3_BUCKET = process.env.S3_BUCKET!;
 const S3_REGION = process.env.S3_REGION || "ap-south-1";
@@ -45,6 +45,33 @@ export async function downloadFromS3(url: string): Promise<Buffer> {
 
   if (!Body) throw new Error(`S3 download returned empty body for key: ${key}`);
   return Buffer.from(await Body.transformToByteArray());
+}
+
+/** Delete all objects under a prefix (e.g., captures/{id}/participant-a/clips/) */
+export async function deleteS3Prefix(prefix: string): Promise<number> {
+  let deleted = 0;
+  let continuationToken: string | undefined;
+
+  do {
+    const list = await s3.send(new ListObjectsV2Command({
+      Bucket: S3_BUCKET,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+    }));
+
+    const keys = (list.Contents || []).map((o) => ({ Key: o.Key! }));
+    if (keys.length > 0) {
+      await s3.send(new DeleteObjectsCommand({
+        Bucket: S3_BUCKET,
+        Delete: { Objects: keys },
+      }));
+      deleted += keys.length;
+    }
+
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return deleted;
 }
 
 export async function uploadToS3(key: string, body: Buffer, contentType: string): Promise<string> {

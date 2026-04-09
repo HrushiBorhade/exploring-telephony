@@ -5,7 +5,7 @@ import path from "path";
 import * as dbq from "@repo/db";
 import { transcribeWithGemini, type Segment } from "../lib/gemini";
 import { convertToMp3, sliceToMp3, formatTimestamp, getDuration, trimStart } from "../lib/ffmpeg";
-import { uploadToS3, downloadFromS3 } from "../lib/s3";
+import { uploadToS3, downloadFromS3, deleteS3Prefix } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { logger } from "../logger";
 
@@ -102,20 +102,37 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       uploadToS3(`captures/${captureId}/participant-b/full.mp3`, await readFile(callerBMp3), "audio/mpeg"),
     ]);
 
-    // ── Step 4: Transcribe with Gemini 3.1 Flash ────────────────────
+    // ── Step 4: Transcribe (pass audio duration to prevent hallucinated timestamps) ──
+    // durA, durB, minDuration already computed in Step 2b (alignment)
     await job.updateProgress(35);
-    log.info("Step 4: Transcribing with Gemini 3.1 Flash");
+    log.info({ durA, durB }, "Step 4: Transcribing with Gemini 3.1 Pro");
 
     const [resultA, resultB] = await Promise.all([
-      transcribeWithGemini(await readFile(callerAMp3), "audio/mp3"),
-      transcribeWithGemini(await readFile(callerBMp3), "audio/mp3"),
+      transcribeWithGemini(await readFile(callerAMp3), "audio/mp3", durA),
+      transcribeWithGemini(await readFile(callerBMp3), "audio/mp3", durB),
     ]);
 
-    log.info({ segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Transcription complete");
+    // Validate: clamp timestamps to actual duration, filter invalid segments
+    const validateSegments = (segments: typeof resultA.segments, dur: number) => {
+      return segments
+        .filter((s) => s.startSeconds >= 0 && s.startSeconds < dur && (s.endSeconds - s.startSeconds) >= 0.3)
+        .map((s) => ({ ...s, endSeconds: Math.min(s.endSeconds, dur) }));
+    };
 
-    // ── Step 5: Slice utterances to MP3 clips (parallel batches) ───
+    resultA.segments = validateSegments(resultA.segments, durA);
+    resultB.segments = validateSegments(resultB.segments, durB);
+
+    log.info({ segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Transcription complete (validated)");
+
+    // ── Step 5: Clean old clips + slice new ones ──────────────────
     await job.updateProgress(50);
-    log.info("Step 5: Slicing utterances");
+    log.info("Step 5: Cleaning old clips + slicing utterances");
+
+    // Delete stale clips from previous runs
+    await Promise.all([
+      deleteS3Prefix(`captures/${captureId}/participant-a/clips/`),
+      deleteS3Prefix(`captures/${captureId}/participant-b/clips/`),
+    ]);
 
     const clipUrlsA = await sliceAndUpload(callerAMp3, resultA.segments, captureId, "participant-a", tmpDir);
     await job.updateProgress(65);
@@ -203,6 +220,10 @@ async function sliceAndUpload(
 
         await sliceToMp3(audioPath, clipPath, seg.startSeconds, seg.endSeconds);
         const clipData = await readFile(clipPath);
+        // Skip empty/corrupt clips (< 500 bytes = just MP3 header, no audio)
+        if (clipData.length < 500) {
+          return { idx, url: "" };
+        }
         const url = await uploadToS3(s3Key, clipData, "audio/mpeg");
         return { idx, url };
       }),

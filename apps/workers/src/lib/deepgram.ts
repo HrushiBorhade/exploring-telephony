@@ -2,7 +2,7 @@ import { DeepgramClient } from "@deepgram/sdk";
 import { logger } from "../logger";
 import type { Segment, TranscriptionResult } from "./gemini";
 
-const deepgram = new DeepgramClient(process.env.DEEPGRAM_API_KEY!);
+const deepgram = new DeepgramClient({ apiKey: process.env.DEEPGRAM_API_KEY! } as any);
 
 export async function transcribeWithDeepgram(
   audioBuffer: Buffer,
@@ -10,8 +10,7 @@ export async function transcribeWithDeepgram(
 ): Promise<TranscriptionResult> {
   logger.info({ sizeKB: (audioBuffer.length / 1024).toFixed(1), mimeType }, "[DEEPGRAM] Starting transcription");
 
-  // v5 API: listen.v1.media.transcribeFile
-  const data = await deepgram.listen.v1.media.transcribeFile(audioBuffer, {
+  const data: any = await deepgram.listen.v1.media.transcribeFile(audioBuffer, {
     model: "nova-3",
     smart_format: true,
     detect_language: true,

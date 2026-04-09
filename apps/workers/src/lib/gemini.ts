@@ -22,9 +22,10 @@ export interface TranscriptionResult {
 export async function transcribeWithGemini(
   audioBuffer: Buffer,
   mimeType: string = "audio/mp3",
+  audioDurationSeconds?: number,
 ): Promise<TranscriptionResult> {
   try {
-    return await _transcribeGemini(audioBuffer, mimeType);
+    return await _transcribeGemini(audioBuffer, mimeType, audioDurationSeconds);
   } catch (err: any) {
     const msg = err.message || "";
     const isOverloaded = msg.includes("503") || msg.includes("429") || msg.includes("UNAVAILABLE") || msg.includes("RESOURCE_EXHAUSTED");
@@ -41,6 +42,7 @@ export async function transcribeWithGemini(
 async function _transcribeGemini(
   audioBuffer: Buffer,
   mimeType: string,
+  audioDurationSeconds?: number,
 ): Promise<TranscriptionResult> {
   logger.info({ sizeKB: (audioBuffer.length / 1024).toFixed(1), mimeType }, "[GEMINI] Starting transcription");
 
@@ -79,7 +81,8 @@ TRANSCRIPTION RULES:
 6. Preserve filler words, false starts, and disfluencies exactly as spoken
 7. Preserve abbreviations and special terminology verbatim (medical: BP, ECG, OPD, HbA1c, LDL)
 8. For spelled-out content (names, emails, codes), transcribe each letter/digit separately
-9. Empty segments array if silence/no speech`,
+9. Empty segments array if silence/no speech
+${audioDurationSeconds ? `10. IMPORTANT: This audio is exactly ${audioDurationSeconds.toFixed(1)} seconds long. Do NOT generate any timestamps beyond ${audioDurationSeconds.toFixed(1)} seconds.` : ""}`,
         },
       ],
     },
