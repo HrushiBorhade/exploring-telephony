@@ -273,9 +273,8 @@ export function AudioPlayerProvider<TData = unknown>({
   return (
     <AudioPlayerContext.Provider value={api as AudioPlayerApi<unknown>}>
       <AudioPlayerTimeContext.Provider value={time}>
-        {/* No crossOrigin — S3/R2 public URLs work without CORS for media elements */}
-        {/* preload="auto" ensures the browser downloads enough data for seeking */}
-        <audio ref={audioRef} className="hidden" preload="auto" />
+        {/* crossOrigin="use-credentials" sends auth cookies for cross-origin API proxy requests */}
+        <audio ref={audioRef} className="hidden" preload="auto" crossOrigin="use-credentials" />
         {children}
       </AudioPlayerTimeContext.Provider>
     </AudioPlayerContext.Provider>
