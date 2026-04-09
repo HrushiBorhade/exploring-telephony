@@ -67,7 +67,7 @@ export default function AdminUsersPage() {
         },
       });
       if (error) throw new Error(error.message);
-      setUsers((data?.users as AdminUser[]) ?? []);
+      setUsers((data?.users as unknown as AdminUser[]) ?? []);
     } catch (err: any) {
       toast.error(`Failed to load users: ${err.message}`);
     } finally {
@@ -113,7 +113,7 @@ export default function AdminUsersPage() {
     if (!roleDialog) return;
     setActionLoading(roleDialog.userId);
     try {
-      const { error } = await authClient.admin.setRole({ userId: roleDialog.userId, role: newRole });
+      const { error } = await authClient.admin.setRole({ userId: roleDialog.userId, role: newRole as "user" | "admin" });
       if (error) throw new Error(error.message);
       toast.success(`${roleDialog.name} is now ${newRole}`);
       setRoleDialog(null);
@@ -271,7 +271,7 @@ export default function AdminUsersPage() {
           <DialogHeader>
             <DialogTitle>Set Role for {roleDialog?.name}</DialogTitle>
           </DialogHeader>
-          <Select value={newRole} onValueChange={setNewRole}>
+          <Select value={newRole} onValueChange={(v) => v && setNewRole(v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
