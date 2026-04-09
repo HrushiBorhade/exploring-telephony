@@ -68,6 +68,8 @@ export default function AdminDashboard() {
 
   if (isLoading && !stats) return <DashboardSkeleton />;
 
+  const s = stats ?? { totalUsers: 0, totalCaptures: 0, completedCaptures: 0, totalDuration: 0, thisWeek: 0 };
+
   return (
     <motion.div
       className="p-4 lg:p-6 space-y-6"
@@ -83,25 +85,25 @@ export default function AdminDashboard() {
       <motion.div variants={pageFadeUp} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Users"
-          value={stats.totalUsers}
+          value={s.totalUsers}
           icon={<Users className="size-4" />}
         />
         <StatCard
           title="Total Captures"
-          value={stats.totalCaptures}
+          value={s.totalCaptures}
           icon={<PhoneCall className="size-4" />}
         />
         <StatCard
           title="Completed"
-          value={stats.completedCaptures}
+          value={s.completedCaptures}
           icon={<CheckCircle className="size-4" />}
-          description={`${stats.totalCaptures > 0 ? Math.round((stats.completedCaptures / stats.totalCaptures) * 100) : 0}% completion rate`}
+          description={`${s.totalCaptures > 0 ? Math.round((s.completedCaptures / s.totalCaptures) * 100) : 0}% completion rate`}
         />
         <StatCard
           title="Total Duration"
-          value={formatDuration(stats.totalDuration)}
+          value={formatDuration(s.totalDuration)}
           icon={<Clock className="size-4" />}
-          description={`${stats.thisWeek} captures this week`}
+          description={`${s.thisWeek} captures this week`}
         />
       </motion.div>
 
