@@ -64,7 +64,7 @@ export default function AdminCapturesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const { data, isLoading } = useAdminCaptures();
+  const { data, isPending } = useAdminCaptures();
 
   // Guard
   useEffect(() => {
@@ -132,7 +132,7 @@ export default function AdminCapturesPage() {
       </motion.div>
 
       <motion.div variants={pageFadeUp} className="border rounded-lg overflow-hidden">
-        {isLoading && allCaptures.length === 0 ? (
+        {isPending ? (
           <TableSkeleton />
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">No captures found</div>

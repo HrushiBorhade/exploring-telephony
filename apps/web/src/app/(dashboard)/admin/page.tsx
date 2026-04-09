@@ -57,7 +57,7 @@ function DashboardSkeleton() {
 export default function AdminDashboard() {
   const router = useRouter();
   const { data: session } = useSession();
-  const { data: stats, isLoading } = useAdminStats();
+  const { data: stats, isPending } = useAdminStats();
 
   // Guard: redirect non-admin users
   useEffect(() => {
@@ -66,7 +66,7 @@ export default function AdminDashboard() {
     }
   }, [session, router]);
 
-  if (isLoading && !stats) return <DashboardSkeleton />;
+  if (isPending) return <DashboardSkeleton />;
 
   const s = stats ?? { totalUsers: 0, totalCaptures: 0, completedCaptures: 0, totalDuration: 0, thisWeek: 0 };
 

@@ -97,7 +97,7 @@ export default function CaptureDashboard() {
   const router = useRouter();
   const {
     data,
-    isLoading,
+    isPending,
     error,
     hasNextPage,
     isFetchingNextPage,
@@ -178,8 +178,8 @@ export default function CaptureDashboard() {
           </motion.div>
 
           <motion.div variants={fadeUp} className="rounded-lg border border-border overflow-hidden">
-          {/* ── Initial loading (only when no cached data) ── */}
-          {isLoading && captures.length === 0 ? (
+          {/* ── Initial loading (only when no cached data exists) ── */}
+          {isPending ? (
             <TableSkeleton />
 
           /* ── Initial error (no data at all) ── */
@@ -297,7 +297,7 @@ export default function CaptureDashboard() {
               )}
 
               {/* End of list */}
-              {!hasNextPage && !isLoading && captures.length > 0 && (
+              {!hasNextPage && !isPending && captures.length > 0 && (
                 <p className="text-center text-xs text-muted-foreground/50 py-1">
                   All {captures.length} captures loaded
                 </p>

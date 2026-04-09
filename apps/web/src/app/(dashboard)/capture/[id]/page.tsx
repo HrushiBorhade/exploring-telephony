@@ -271,7 +271,7 @@ export default function CaptureDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  const { data: capture, isLoading, error } = useCapture(id);
+  const { data: capture, isPending, error } = useCapture(id);
   const startMutation = useStartCapture(id);
   const endMutation = useEndCapture(id);
   const transcriptMutation = useUpdateTranscript(id);
@@ -352,7 +352,7 @@ export default function CaptureDetailPage() {
     return () => clearTimeout(timer);
   }, [pendingCsvReload, csvData, loadCsv]);
 
-  if (isLoading && !capture) return <DetailSkeleton />;
+  if (isPending && !capture) return <DetailSkeleton />;
 
   if (error && !capture) {
     return (
