@@ -72,7 +72,6 @@ export function useCaptures() {
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 30_000,
   });
 }
 
@@ -80,7 +79,6 @@ export function useCaptureStats() {
   return useQuery({
     queryKey: captureKeys.stats,
     queryFn: () => fetchJson<CaptureStats>(`${API}/api/captures/stats`),
-    staleTime: 30_000,
   });
 }
 
@@ -226,7 +224,6 @@ export function useAdminStats() {
       totalDuration: number;
       thisWeek: number;
     }>(`${API}/api/admin/stats`),
-    staleTime: 30_000,
   });
 }
 
@@ -241,7 +238,6 @@ export function useAdminCaptures(opts?: { cursor?: string; limit?: number }) {
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 30_000,
   });
 }
 
