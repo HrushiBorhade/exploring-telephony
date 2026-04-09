@@ -14,6 +14,8 @@ const envSchema = z.object({
   S3_PUBLIC_URL: z.string().url("S3_PUBLIC_URL must be a valid URL").optional(),
   DATABASE_URL: z.string().startsWith("postgresql://", "DATABASE_URL must be a PostgreSQL URL"),
   FRONTEND_URL: z.string().url("FRONTEND_URL must be a valid URL").optional(),
+  AUTHKEY_API_KEY: z.string().optional(),
+  AUTHKEY_WID: z.string().optional(),
   REDIS_HOST: z.string().default("localhost"),
   REDIS_PORT: z.coerce.number().default(6379),
   PORT: z.coerce.number().default(8080),

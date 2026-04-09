@@ -25,6 +25,12 @@ process.on("unhandledRejection", (reason: any) => {
 // ════════════════════════════════════════════════════════════════════
 
 const app = express();
+
+// Better Auth — MUST be mounted BEFORE express.json() (handles its own body parsing)
+import { toNodeHandler } from "better-auth/node";
+import { auth } from "./lib/auth";
+app.all("/api/auth/*splat", toNodeHandler(auth));
+
 setupMiddleware(app);
 
 // Mount routes

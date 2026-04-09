@@ -1,14 +1,15 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { phoneNumber } from "better-auth/plugins";
-import { nextCookies } from "better-auth/next-js";
-import { db } from "@repo/db";
-import { user, session, account, verification } from "@repo/db";
+import { db, user, session, account, verification } from "@repo/db";
+
+const isProduction = process.env.NODE_ENV === "production";
 
 export const auth = betterAuth({
+  baseURL: isProduction ? "https://asr-api.annoteapp.com" : "http://localhost:8080",
+  basePath: "/api/auth",
   trustedOrigins: [
-    process.env.BETTER_AUTH_URL || "http://localhost:3002",
-    "http://localhost:8080",
+    process.env.FRONTEND_URL || "http://localhost:3000",
   ],
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -30,40 +31,32 @@ export const auth = betterAuth({
 
         const mobile = phone.replace(/^\+91/, "");
         if (!/^\d{10}$/.test(mobile)) {
-          throw new Error(
-            "Invalid phone number format: expected +91 followed by 10 digits"
-          );
+          throw new Error("Invalid phone number format: expected +91 followed by 10 digits");
         }
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10_000);
 
         try {
-          const response = await fetch(
-            "https://console.authkey.io/restapi/requestjson.php",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Basic ${apiKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                country_code: "91",
-                mobile,
-                wid,
-                type: "text",
-                bodyValues: { "1": code },
-              }),
-              signal: controller.signal,
-            }
-          );
+          const response = await fetch("https://console.authkey.io/restapi/requestjson.php", {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              country_code: "91",
+              mobile,
+              wid,
+              type: "text",
+              bodyValues: { "1": code },
+            }),
+            signal: controller.signal,
+          });
 
           if (!response.ok) {
             const body = await response.text();
-            console.error(
-              `[AuthKey] Failed to send OTP: ${response.status}`,
-              body.slice(0, 500)
-            );
+            console.error(`[AuthKey] Failed to send OTP: ${response.status}`, body.slice(0, 500));
             throw new Error("Failed to send OTP via WhatsApp");
           }
 
@@ -84,12 +77,10 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: 300,
       signUpOnVerification: {
-        getTempEmail: (phone) =>
-          `${phone.replace(/[^0-9]/g, "")}@voice-capture.local`,
+        getTempEmail: (phone) => `${phone.replace(/[^0-9]/g, "")}@voice-capture.local`,
         getTempName: (phone) => phone,
       },
     }),
-    nextCookies(),
   ],
   session: {
     expiresIn: 60 * 60 * 24 * 30,
@@ -97,6 +88,10 @@ export const auth = betterAuth({
     cookieCache: { enabled: true, maxAge: 60 * 5 },
   },
   advanced: {
+    crossSubDomainCookies: {
+      enabled: true,
+      domain: process.env.NODE_ENV === "production" ? "annoteapp.com" : undefined,
+    },
     useSecureCookies: process.env.NODE_ENV === "production",
   },
 });
