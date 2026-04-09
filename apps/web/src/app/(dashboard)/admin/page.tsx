@@ -121,16 +121,16 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:border-primary/30 transition-colors" onClick={() => router.push("/capture")}>
+        <Card className="cursor-pointer hover:border-primary/30 transition-colors" onClick={() => router.push("/admin/users")}>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <PhoneCall className="size-4" />
-              Capture Management
+              View User Captures
             </CardTitle>
           </CardHeader>
           <CardContent className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Impersonate a user to view and manage their captures
+              Go to Users → Impersonate to browse any user's captures
             </p>
             <ArrowRight className="size-4 text-muted-foreground" />
           </CardContent>

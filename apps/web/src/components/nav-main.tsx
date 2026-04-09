@@ -30,7 +30,8 @@ export function NavMain({
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const isActive = pathname.startsWith(item.url)
+            // Exact match for index routes (/admin, /capture), prefix match for sub-routes (/admin/users)
+            const isActive = item.url === pathname || (item.url !== "/admin" && item.url !== "/capture" && pathname.startsWith(item.url))
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
