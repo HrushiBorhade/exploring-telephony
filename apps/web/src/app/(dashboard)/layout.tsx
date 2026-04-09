@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { OnboardingGuard } from "@/components/onboarding-guard";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { SiteHeader } from "@/components/site-header";
 
@@ -19,6 +20,8 @@ export default function DashboardLayout({
     >
       <AppSidebar variant="inset" />
       <SidebarInset>
+        {/* Banner OUTSIDE OnboardingGuard — admin can stop impersonating even if user hasn't onboarded */}
+        <ImpersonationBanner />
         <OnboardingGuard>
           <SiteHeader />
           <div className="flex flex-1 flex-col">
