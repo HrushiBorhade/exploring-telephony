@@ -10,6 +10,26 @@ export interface CaptureStats {
   thisWeek: number;
 }
 
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber: string | null;
+  role: "user" | "admin";
+  banned: boolean;
+  banReason: string | null;
+  banExpires: number | null;
+  createdAt: string;
+}
+
+export interface AdminStats {
+  totalUsers: number;
+  totalCaptures: number;
+  completedCaptures: number;
+  totalDuration: number;
+  thisWeek: number;
+}
+
 export interface Capture {
   id: string;
   userId?: string;

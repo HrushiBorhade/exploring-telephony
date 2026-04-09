@@ -82,6 +82,52 @@ export async function ping() {
   await db.execute(sql`SELECT 1`);
 }
 
+// ── Admin queries ──────────────────────────────────────────────────
+
+export async function getAdminStats() {
+  const [totals] = await db
+    .select({
+      total: count(),
+      completed: count(sql`CASE WHEN ${schema.captures.status} = 'completed' THEN 1 END`),
+      totalDuration: sum(schema.captures.durationSeconds),
+    })
+    .from(schema.captures);
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [weekly] = await db
+    .select({ thisWeek: count() })
+    .from(schema.captures)
+    .where(gte(schema.captures.createdAt, sevenDaysAgo));
+
+  const [users] = await db
+    .select({ totalUsers: count() })
+    .from(schema.user);
+
+  return {
+    totalUsers: users?.totalUsers ?? 0,
+    totalCaptures: totals?.total ?? 0,
+    completedCaptures: Number(totals?.completed ?? 0),
+    totalDuration: Number(totals?.totalDuration ?? 0),
+    thisWeek: weekly?.thisWeek ?? 0,
+  };
+}
+
+export async function listAllCaptures(opts?: { cursor?: string; limit?: number }) {
+  const limit = opts?.limit ?? 20;
+  const conditions = [];
+
+  if (opts?.cursor) {
+    conditions.push(sql`${schema.captures.createdAt} < ${opts.cursor}`);
+  }
+
+  return db
+    .select()
+    .from(schema.captures)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(schema.captures.createdAt))
+    .limit(limit + 1);
+}
+
 export async function findStaleCaptures() {
   return db
     .select()
@@ -131,6 +177,7 @@ export async function getSessionByToken(token: string) {
     .select({
       userId: schema.session.userId,
       phoneNumber: schema.user.phoneNumber,
+      role: schema.user.role,
       expiresAt: schema.session.expiresAt,
     })
     .from(schema.session)

@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { phoneNumber } from "better-auth/plugins";
+import { phoneNumber, admin } from "better-auth/plugins";
 import { db, user, session, account, verification } from "@repo/db";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -80,6 +80,10 @@ export const auth = betterAuth({
         getTempEmail: (phone) => `${phone.replace(/[^0-9]/g, "")}@voice-capture.local`,
         getTempName: (phone) => phone,
       },
+    }),
+    admin({
+      defaultRole: "user",
+      impersonationSessionDuration: 60 * 60, // 1 hour
     }),
   ],
   session: {

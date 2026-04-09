@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { requireAuth, type AuthRequest } from "../middleware/auth";
+import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { roomService, agentDispatch, egressClient } from "../lib/livekit";
 import { csvQueue } from "@repo/queues";
 import * as dbq from "@repo/db";
@@ -316,6 +316,41 @@ router.patch("/api/captures/:id/transcript", requireAuth, async (req: AuthReques
   } catch (err: any) {
     logger.error({ captureId: id, error: err.message }, "[CAPTURE] Transcript edit failed");
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Admin endpoints
+// ═══════════════════════════════════════════════════════════════════
+
+// Admin: platform-wide stats
+router.get("/api/admin/stats", requireAuth, requireAdmin, async (_req: AuthRequest, res) => {
+  try {
+    const stats = await dbq.getAdminStats();
+    res.json(stats);
+  } catch {
+    res.status(500).json({ error: "Failed to get admin stats" });
+  }
+});
+
+// Admin: list all captures across all users
+router.get("/api/admin/captures", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+
+    const rows = await dbq.listAllCaptures({ cursor, limit });
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
+    res.json({
+      items: pageRows.map(toApiCapture),
+      nextCursor: hasMore && pageRows.length > 0
+        ? pageRows[pageRows.length - 1].createdAt?.toISOString() ?? null
+        : null,
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to list captures" });
   }
 });
 

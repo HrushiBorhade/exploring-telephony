@@ -4,6 +4,7 @@ import { getSessionByToken } from "@repo/db";
 export interface AuthRequest extends Request {
   userId?: string;
   userPhone?: string;
+  userRole?: string;
 }
 
 /**
@@ -44,5 +45,18 @@ export async function requireAuth(
 
   req.userId = sess.userId;
   req.userPhone = sess.phoneNumber ?? undefined;
+  req.userRole = sess.role ?? "user";
+  next();
+}
+
+export async function requireAdmin(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  if (req.userRole !== "admin") {
+    res.status(403).json({ error: "Admin access required" });
+    return;
+  }
   next();
 }
