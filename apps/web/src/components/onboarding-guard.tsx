@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { data: session } = useSession();
-  const { data: profile, isLoading, isError } = useProfile();
+  const { data: profile, isPending, isError } = useProfile();
 
   // Skip onboarding redirect during impersonation — admin needs access
   const isImpersonating = !!(session as any)?.session?.impersonatedBy;
@@ -20,16 +20,16 @@ export function OnboardingGuard({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
-    if (isLoading || !profile) return;
+    if (isPending || !profile) return;
     if (!profile.onboardingCompleted) {
       router.replace("/onboarding");
     }
-  }, [isLoading, isError, profile, router, isImpersonating]);
+  }, [isPending, isError, profile, router, isImpersonating]);
 
   if (isImpersonating) return <>{children}</>;
 
-  // Show skeleton while loading, erroring, or redirecting
-  if (isLoading || isError || (profile && !profile.onboardingCompleted)) {
+  // Show skeleton ONLY on first load (no cache). isPending = no data in cache at all.
+  if (isPending) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
         <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
