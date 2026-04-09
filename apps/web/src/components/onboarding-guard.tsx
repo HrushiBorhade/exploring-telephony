@@ -3,13 +3,19 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useProfile } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { data: session } = useSession();
   const { data: profile, isLoading, isError } = useProfile();
 
+  // Skip onboarding redirect during impersonation — admin needs access
+  const isImpersonating = !!(session as any)?.session?.impersonatedBy;
+
   useEffect(() => {
+    if (isImpersonating) return;
     if (isError) {
       router.replace("/login");
       return;
@@ -18,7 +24,9 @@ export function OnboardingGuard({ children }: { children: React.ReactNode }) {
     if (!profile.onboardingCompleted) {
       router.replace("/onboarding");
     }
-  }, [isLoading, isError, profile, router]);
+  }, [isLoading, isError, profile, router, isImpersonating]);
+
+  if (isImpersonating) return <>{children}</>;
 
   // Show skeleton while loading, erroring, or redirecting
   if (isLoading || isError || (profile && !profile.onboardingCompleted)) {
