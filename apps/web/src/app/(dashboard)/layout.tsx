@@ -20,10 +20,9 @@ export default function DashboardLayout({
     >
       <AppSidebar variant="inset" />
       <SidebarInset>
-        {/* Banner OUTSIDE OnboardingGuard — admin can stop impersonating even if user hasn't onboarded */}
         <ImpersonationBanner />
+        <SiteHeader />
         <OnboardingGuard>
-          <SiteHeader />
           <div className="flex flex-1 flex-col">
             {children}
           </div>
