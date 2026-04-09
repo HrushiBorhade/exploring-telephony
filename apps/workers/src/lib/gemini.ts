@@ -55,18 +55,31 @@ async function _transcribeGemini(
           },
         },
         {
-          text: `Transcribe this audio recording precisely.
+          text: `You are a professional multilingual transcription engine for telephony audio data.
 
-This audio may contain MULTIPLE LANGUAGES including English, Hindi, Kannada, Telugu, Tamil, Marathi, or code-switching between languages mid-sentence. Transcribe each segment in the ORIGINAL language spoken — do not translate.
+TASK: Transcribe this audio clip faithfully — no paraphrasing, no normalization. Produce transcripts exactly as spoken.
 
-Requirements:
-1. Return EVERY utterance/segment with accurate start and end times in SECONDS (decimal, e.g. 5.2).
-2. Detect the language of each segment (use ISO 639-1 codes: "en", "hi", "kn", "te", "ta", "mr", etc.).
-3. For code-switched segments (mixing languages), use the dominant language code and transcribe exactly as spoken.
-4. Detect the primary emotion: happy, sad, angry, or neutral.
-5. Be thorough — do not skip any speech, even short utterances like "yes", "hmm", "haan", "okay", "accha".
-6. Use the exact words spoken in the original language, no paraphrasing, no translation.
-7. If there is silence or no speech, return an empty segments array.`,
+SCRIPT RULES (CRITICAL — legal compliance):
+- Hindi words → Devanagari script (e.g., "मैं ठीक हूँ", "क्या हाल है")
+- Telugu words → Telugu script (e.g., "నేను బాగున్నాను")
+- Tamil words → Tamil script (e.g., "நான் நல்லா இருக்கேன்")
+- Bengali words → Bengali script (e.g., "আমি ভালো আছি")
+- English words → Latin alphabet ALWAYS (e.g., "hello", "delivery", "okay", "BP", "HbA1c")
+- Code-mixed sentences use BOTH scripts: "मैं delivery boy का wait कर रहा हूँ"
+- NEVER romanize Indic languages (no "main theek hoon" — write "मैं ठीक हूँ")
+- NEVER write English in Indic scripts (no "हेलो" for "hello")
+- Medical terms, abbreviations, alphanumeric IDs stay in Latin: "BP", "OPD", "MH-7249A", "HbA1c"
+
+TRANSCRIPTION RULES:
+1. Return EVERY utterance with accurate start/end times in SECONDS (decimal, e.g. 5.2)
+2. Detect language per segment: "en", "hi", "te", "ta", "bn", "kn", "mr"
+3. For code-mixed segments, use the dominant language code
+4. Detect emotion: happy, sad, angry, or neutral
+5. Be thorough — include short utterances: "yes", "hmm", "हाँ", "okay", "अच्छा", "go", "stop"
+6. Preserve filler words, false starts, and disfluencies exactly as spoken
+7. Preserve abbreviations and special terminology verbatim (medical: BP, ECG, OPD, HbA1c, LDL)
+8. For spelled-out content (names, emails, codes), transcribe each letter/digit separately
+9. Empty segments array if silence/no speech`,
         },
       ],
     },
