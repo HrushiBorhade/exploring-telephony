@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from "motion/react";
 
 export function ImpersonationBanner() {
   const { data: session } = useSession();
-  const router = useRouter();
 
   const isImpersonating = !!(session as any)?.session?.impersonatedBy;
 
