@@ -8,9 +8,11 @@ function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 5_000,
+        staleTime: 60_000,        // Data is fresh for 60s — no refetch on revisit
+        gcTime: 5 * 60_000,       // Keep cache for 5 min after unmount
         retry: 2,
         refetchOnWindowFocus: false,
+        placeholderData: (prev: unknown) => prev,  // Show stale data instantly while refetching
       },
       dehydrate: {
         shouldDehydrateQuery: (query) =>
