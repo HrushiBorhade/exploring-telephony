@@ -573,6 +573,9 @@ module "ecs" {
             { name = "S3_ACCESS_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_ACCESS_KEY::" },
             { name = "S3_SECRET_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_SECRET_KEY::" },
             { name = "GEMINI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:GEMINI_API_KEY::" },
+            { name = "AUTHKEY_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_API_KEY::" },
+            { name = "AUTHKEY_WID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_WID::" },
+            { name = "BETTER_AUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:BETTER_AUTH_SECRET::" },
           ]
 
           readonlyRootFilesystem = false
