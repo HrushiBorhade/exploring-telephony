@@ -25,7 +25,7 @@ function StatCard({ title, value, icon, description }: {
   description?: string;
 }) {
   return (
-    <Card>
+    <Card className="bg-gradient-to-t from-primary/5 to-card">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <div className="text-muted-foreground">{icon}</div>
