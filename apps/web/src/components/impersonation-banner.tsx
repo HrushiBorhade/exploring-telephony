@@ -1,10 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useSession } from "@/lib/auth-client";
-import { authClient } from "@/lib/auth-client";
+import { useSession, authClient } from "@/lib/auth-client";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -17,8 +15,8 @@ export function ImpersonationBanner() {
   async function stopImpersonating() {
     try {
       await authClient.admin.stopImpersonating();
-      toast.success("Stopped impersonating");
-      router.replace("/admin/users");
+      // Full page reload — session reverts to admin, all caches must clear
+      window.location.href = "/admin/users";
     } catch {
       toast.error("Failed to stop impersonating");
     }

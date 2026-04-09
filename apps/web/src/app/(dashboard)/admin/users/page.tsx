@@ -130,8 +130,8 @@ export default function AdminUsersPage() {
     try {
       const { error } = await authClient.admin.impersonateUser({ userId });
       if (error) throw new Error(error.message);
-      toast.success("Impersonating user");
-      router.replace("/capture");
+      // Full page reload — session cookie changed, all caches must clear
+      window.location.href = "/capture";
     } catch (err: any) {
       toast.error(err.message);
     } finally {
