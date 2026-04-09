@@ -66,7 +66,7 @@ export default function AdminDashboard() {
     }
   }, [session, router]);
 
-  if (isLoading || !stats) return <DashboardSkeleton />;
+  if (isLoading && !stats) return <DashboardSkeleton />;
 
   return (
     <motion.div
