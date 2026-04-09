@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Capture, CaptureStats, PaginatedResponse, ProfileResponse } from "./types";
 
@@ -207,6 +207,45 @@ export function useEndCapture(id: string) {
     },
   });
 }
+
+// ── Admin ───────────────────────────────────────────────────────────
+
+export const adminKeys = {
+  users: (params?: Record<string, unknown>) => ["admin", "users", params ?? {}] as const,
+  stats: ["admin", "stats"] as const,
+  captures: (params?: Record<string, unknown>) => ["admin", "captures", params ?? {}] as const,
+};
+
+export function useAdminStats() {
+  return useQuery({
+    queryKey: adminKeys.stats,
+    queryFn: () => fetchJson<{
+      totalUsers: number;
+      totalCaptures: number;
+      completedCaptures: number;
+      totalDuration: number;
+      thisWeek: number;
+    }>(`${API}/api/admin/stats`),
+    staleTime: 30_000,
+  });
+}
+
+export function useAdminCaptures(opts?: { cursor?: string; limit?: number }) {
+  return useInfiniteQuery({
+    queryKey: adminKeys.captures(opts),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams();
+      if (pageParam) params.set("cursor", pageParam);
+      params.set("limit", String(opts?.limit ?? 20));
+      return fetchJson<PaginatedResponse<Capture>>(`${API}/api/admin/captures?${params}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    staleTime: 30_000,
+  });
+}
+
+// ── Transcript ──────────────────────────────────────────────────────
 
 export function useUpdateTranscript(captureId: string) {
   const queryClient = useQueryClient();
