@@ -49,6 +49,11 @@ const navAdmin = [
     url: "/admin/users",
     icon: <UsersIcon />,
   },
+  {
+    title: "All Captures",
+    url: "/admin/captures",
+    icon: <PhoneCallIcon />,
+  },
 ];
 
 const navSecondary = [
