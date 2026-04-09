@@ -178,8 +178,8 @@ export default function CaptureDashboard() {
           </motion.div>
 
           <motion.div variants={fadeUp} className="rounded-lg border border-border overflow-hidden">
-          {/* ── Initial loading ── */}
-          {isLoading ? (
+          {/* ── Initial loading (only when no cached data) ── */}
+          {isLoading && captures.length === 0 ? (
             <TableSkeleton />
 
           /* ── Initial error (no data at all) ── */
