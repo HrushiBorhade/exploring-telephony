@@ -61,7 +61,7 @@ router.get("/api/captures/:id", requireAuth, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId !== req.userId) {
+  if (capture.userId !== req.userId && req.userRole !== "admin") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   res.json(toApiCapture(capture));
@@ -115,7 +115,7 @@ router.post("/api/captures", requireAuth, async (req: AuthRequest, res) => {
 router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res) => {
   const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId !== req.userId) {
+  if (capture.userId !== req.userId && req.userRole !== "admin") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
   if (capture.status !== "created") {
@@ -231,7 +231,7 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
 router.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) => {
   const capture = activeCaptures.get(req.params.id as string);
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId !== req.userId) {
+  if (capture.userId !== req.userId && req.userRole !== "admin") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
@@ -280,7 +280,7 @@ router.patch("/api/captures/:id/transcript", requireAuth, async (req: AuthReques
   const id = req.params.id as string;
   const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId !== req.userId) {
+  if (capture.userId !== req.userId && req.userRole !== "admin") {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 
