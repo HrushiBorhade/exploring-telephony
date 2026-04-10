@@ -12,12 +12,14 @@ const API = process.env.NEXT_PUBLIC_API_URL || "";
  * Input:  https://bucket.s3.region.amazonaws.com/captures/{captureId}/participant-a/clips/001.mp3
  * Output: {API}/api/captures/{captureId}/audio/participant-a/clips/001.mp3
  */
-export function proxyAudioUrl(s3Url: string, _captureId: string): string {
-  // In production, captures/* objects have public-read access via S3 bucket policy.
-  // Use the S3 URL directly — no proxy needed, avoids cross-origin cookie issues.
-  // In dev (localhost), S3 URLs also work if the bucket has public access.
-  // The proxy route (/api/captures/:id/audio/*) exists as a fallback for private objects.
-  return s3Url;
+export function proxyAudioUrl(s3Url: string, captureId: string): string {
+  // Extract the S3 key after captures/{captureId}/
+  // e.g. "https://bucket.s3.region.amazonaws.com/captures/abc123/mixed.mp3" → "mixed.mp3"
+  const marker = `captures/${captureId}/`;
+  const idx = s3Url.indexOf(marker);
+  if (idx === -1) return s3Url;
+  const key = s3Url.slice(idx + marker.length);
+  return `${API}/api/captures/${captureId}/audio/${key}`;
 }
 
 // ── Query keys ──────────────────────────────────────────────────────

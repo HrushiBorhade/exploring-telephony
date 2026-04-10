@@ -49,7 +49,7 @@ router.get("/api/captures/:captureId/audio/*key", requireAuth, async (req: AuthR
   }
 
   const capture = await dbq.getCapture(captureId);
-  if (!capture || capture.userId !== req.userId) {
+  if (!capture || (capture.userId !== req.userId && req.userRole !== "admin")) {
     res.status(404).json({ error: "Not found" });
     return;
   }
