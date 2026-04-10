@@ -2,7 +2,7 @@ import { Router } from "express";
 import crypto from "crypto";
 import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/auth";
 import { roomService, agentDispatch, egressClient } from "../lib/livekit";
-import { csvQueue } from "@repo/queues";
+import { audioQueue, csvQueue } from "@repo/queues";
 import * as dbq from "@repo/db";
 import { logger } from "../logger";
 import { env } from "../env";
@@ -386,6 +386,38 @@ router.get("/api/admin/captures", requireAuth, requireAdmin, async (req: AuthReq
     });
   } catch {
     res.status(500).json({ error: "Failed to list captures" });
+  }
+});
+
+// Admin: reprocess all completed captures (re-transcribe + re-clip + re-csv)
+router.post("/api/admin/reprocess-all", requireAuth, requireAdmin, async (_req: AuthRequest, res) => {
+  try {
+    const rows = await dbq.listAllCaptures({ limit: 200 });
+    const completed = rows.filter(
+      (r) => r.status === "completed" && r.recordingUrl && r.recordingUrlA && r.recordingUrlB,
+    );
+
+    const jobs = [];
+    for (const cap of completed) {
+      await audioQueue.add(
+        "process-audio",
+        {
+          captureId: cap.id,
+          mixedUrl: cap.recordingUrl!,
+          callerAUrl: cap.recordingUrlA!,
+          callerBUrl: cap.recordingUrlB!,
+        },
+        { jobId: `reprocess-${cap.id}-${Date.now()}` },
+      );
+      await dbq.updateCapture(cap.id, { status: "processing" });
+      jobs.push(cap.id);
+    }
+
+    logger.info({ count: jobs.length, ids: jobs }, "[ADMIN] Reprocessing all captures");
+    res.json({ requeued: jobs.length, captureIds: jobs });
+  } catch (err: any) {
+    logger.error({ error: err.message }, "[ADMIN] Reprocess failed");
+    res.status(500).json({ error: "Failed to reprocess" });
   }
 });
 
