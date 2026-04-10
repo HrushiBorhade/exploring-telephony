@@ -1,19 +1,21 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { LoaderCircle, Download, Pencil, Check, X, Table2 } from "lucide-react";
+import { LoaderCircle, Download, Pencil, Check, X, Table2, Trash2, AlertTriangle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
 import { useState, useMemo, useCallback, memo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { toast } from "sonner";
-import { useCapture, useStartCapture, useEndCapture, useUpdateTranscript, proxyAudioUrl } from "@/lib/api";
-import type { Utterance } from "@/lib/types";
+import { useCapture, useStartCapture, useEndCapture, useUpdateTranscript, useVerifyCapture, proxyAudioUrl } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
+import type { Utterance, ModerationFlag } from "@/lib/types";
 
 function fmt(s?: number | null) {
   if (s == null) return "\u2014";
@@ -43,8 +45,10 @@ const statusConfig: Record<string, { label: string; badgeClass: string; dot: str
   active:     { label: "In Call",          badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
   ended:      { label: "Processing...",    badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",          dot: "bg-blue-500 dark:bg-blue-400", pulse: true },
   processing: { label: "Transcribing...",  badgeClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900",    dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
-  completed:  { label: "Recording Ready",  badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400" },
-  failed:     { label: "Failed",           badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",             dot: "bg-red-500 dark:bg-red-400" },
+  completed:       { label: "Recording Ready",  badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400" },
+  pending_review:  { label: "Pending Review",  badgeClass: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",       dot: "bg-amber-500 dark:bg-amber-400" },
+  verified:        { label: "Verified",         badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400" },
+  failed:          { label: "Failed",           badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900",             dot: "bg-red-500 dark:bg-red-400" },
 };
 
 const fadeUp = pageFadeUp;
@@ -83,6 +87,7 @@ function parseUtterances(raw: string | null | undefined, captureId: string): Utt
       language: u.language ?? "en",
       emotion: u.emotion ?? "neutral",
       audioUrl: u.audioUrl ? proxyAudioUrl(u.audioUrl, captureId) : "",
+      flags: u.flags ?? [],
     }));
   } catch {
     return [];
@@ -101,29 +106,47 @@ const ConversationBubble = memo(function ConversationBubble({
   turn,
   index,
   onEdit,
+  onDelete,
   isSaving,
 }: {
   turn: ConversationTurn;
   index: number;
-  onEdit?: (text: string) => void;
+  onEdit?: (participant: "a" | "b", originalIndex: number, text: string) => void;
+  onDelete?: (participant: "a" | "b", originalIndex: number, text: string) => void;
   isSaving?: boolean;
 }) {
   const isA = turn.participant === "a";
   const emoCls = emotionClassName[turn.utterance.emotion] ?? emotionClassName.neutral;
+  const flags = turn.utterance.flags ?? [];
+  const highestSeverity = flags.length > 0
+    ? (flags.some(f => f.severity === "high") ? "high" : flags.some(f => f.severity === "medium") ? "medium" : "low")
+    : null;
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(turn.utterance.text);
 
   const handleSave = useCallback(() => {
     if (editText.trim() && editText !== turn.utterance.text) {
-      onEdit?.(editText.trim());
+      onEdit?.(turn.participant, turn.originalIndex, editText.trim());
     }
     setEditing(false);
-  }, [editText, turn.utterance.text, onEdit]);
+  }, [editText, turn.utterance.text, turn.participant, turn.originalIndex, onEdit]);
 
   const handleCancel = useCallback(() => {
     setEditText(turn.utterance.text);
     setEditing(false);
   }, [turn.utterance.text]);
+
+  const handleDelete = useCallback(() => {
+    onDelete?.(turn.participant, turn.originalIndex, turn.utterance.text);
+  }, [turn.participant, turn.originalIndex, turn.utterance.text, onDelete]);
+
+  const flagBorderCls = highestSeverity === "high"
+    ? "border-l-red-500 dark:border-l-red-400"
+    : highestSeverity === "medium"
+    ? "border-l-amber-500 dark:border-l-amber-400"
+    : highestSeverity === "low"
+    ? "border-l-yellow-500 dark:border-l-yellow-400"
+    : "";
 
   return (
     <div
@@ -150,7 +173,7 @@ const ConversationBubble = memo(function ConversationBubble({
             isA
               ? "rounded-tl-sm bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/50 dark:border-emerald-800/30"
               : "rounded-tr-sm bg-zinc-100 dark:bg-zinc-800/60 border border-zinc-200/50 dark:border-zinc-700/30"
-          } ${editing ? "ring-2 ring-primary/30" : ""}`}
+          } ${flags.length > 0 ? `border-l-2 ${flagBorderCls}` : ""} ${editing ? "ring-2 ring-primary/30" : ""}`}
         >
           {editing ? (
             <div className="space-y-1.5">
@@ -170,25 +193,60 @@ const ConversationBubble = memo(function ConversationBubble({
           ) : (
             <>
               <p className="text-sm leading-snug break-words">{turn.utterance.text}</p>
-              {onEdit && (
-                <button
-                  onClick={() => { setEditText(turn.utterance.text); setEditing(true); }}
-                  className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-background border border-border shadow-sm hover:bg-muted"
-                >
-                  {isSaving ? <LoaderCircle className="size-3 animate-spin" /> : <Pencil className="size-3 text-muted-foreground" />}
-                </button>
+              {(onEdit || onDelete) && !isSaving && (
+                <div className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                  {onEdit && (
+                    <button
+                      onClick={() => { setEditText(turn.utterance.text); setEditing(true); }}
+                      className="p-1 rounded-full bg-background border border-border shadow-sm hover:bg-muted"
+                    >
+                      <Pencil className="size-3 text-muted-foreground" />
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      onClick={handleDelete}
+                      className="p-1 rounded-full bg-background border border-border shadow-sm hover:bg-red-50 dark:hover:bg-red-950/40"
+                    >
+                      <Trash2 className="size-3 text-muted-foreground hover:text-red-500" />
+                    </button>
+                  )}
+                </div>
+              )}
+              {isSaving && (
+                <div className="absolute -top-1.5 -right-1.5">
+                  <div className="p-1 rounded-full bg-background border border-border shadow-sm">
+                    <LoaderCircle className="size-3 animate-spin" />
+                  </div>
+                </div>
               )}
             </>
           )}
         </div>
 
         {/* Meta row */}
-        <div className={`flex items-center gap-2 px-1 ${isA ? "" : "flex-row-reverse"}`}>
+        <div className={`flex items-center gap-2 px-1 flex-wrap ${isA ? "" : "flex-row-reverse"}`}>
           <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
             {fmtTimestamp(turn.utterance.start)}
           </span>
           <span className={`text-[10px] ${emoCls}`}>{turn.utterance.emotion}</span>
           <span className="text-[10px] text-muted-foreground uppercase">{turn.utterance.language}</span>
+          {flags.map((flag, fi) => (
+            <span
+              key={fi}
+              className={`inline-flex items-center gap-0.5 text-[9px] font-medium uppercase px-1 py-0.5 rounded ${
+                flag.severity === "high"
+                  ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
+                  : flag.severity === "medium"
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                  : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-400"
+              }`}
+              title={flag.description}
+            >
+              <AlertTriangle className="size-2.5" />
+              {flag.type}
+            </span>
+          ))}
         </div>
 
         {/* Audio clip */}
@@ -202,12 +260,13 @@ const ConversationBubble = memo(function ConversationBubble({
   );
 });
 
-function ConversationView({ utterancesA, utterancesB, phoneA, phoneB, onEditUtterance, savingKey }: {
+function ConversationView({ utterancesA, utterancesB, phoneA, phoneB, onEditUtterance, onDeleteUtterance, savingKey }: {
   utterancesA: Utterance[];
   utterancesB: Utterance[];
   phoneA: string;
   phoneB: string;
   onEditUtterance?: (participant: "a" | "b", index: number, text: string) => void;
+  onDeleteUtterance?: (participant: "a" | "b", index: number, text: string) => void;
   savingKey?: string | null;
 }) {
   const turns = useMemo(() => {
@@ -257,7 +316,8 @@ function ConversationView({ utterancesA, utterancesB, phoneA, phoneB, onEditUtte
           <ConversationBubble
             turn={turn}
             index={i}
-            onEdit={onEditUtterance ? (text) => onEditUtterance(turn.participant, turn.originalIndex, text) : undefined}
+            onEdit={onEditUtterance}
+            onDelete={onDeleteUtterance}
             isSaving={savingKey === `${turn.participant}-${turn.originalIndex}`}
           />
         </div>
@@ -271,20 +331,38 @@ export default function CaptureDetailPage() {
   const router = useRouter();
   const id = params.id as string;
 
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as any)?.role === "admin";
+
   const { data: capture, isPending, error } = useCapture(id);
   const startMutation = useStartCapture(id);
   const endMutation = useEndCapture(id);
   const transcriptMutation = useUpdateTranscript(id);
+  const verifyMutation = useVerifyCapture(id);
   const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [csvData, setCsvData] = useState<string[][] | null>(null);
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvRegenerating, setCsvRegenerating] = useState(false);
   const [pendingCsvReload, setPendingCsvReload] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ participant: "a" | "b"; index: number; text: string } | null>(null);
 
   const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id), [capture?.transcriptA, id]);
   const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id), [capture?.transcriptB, id]);
   const hasUtterances = utterancesA.length > 0 || utterancesB.length > 0;
+
+  const flagCount = useMemo(() => {
+    let count = 0;
+    for (const u of utterancesA) count += (u.flags?.length ?? 0);
+    for (const u of utterancesB) count += (u.flags?.length ?? 0);
+    return count;
+  }, [utterancesA, utterancesB]);
+
+  const displayStatus = capture?.status === "completed"
+    ? capture.verified === true ? "verified"
+    : capture.verified === false ? "pending_review"
+    : "completed"
+    : capture?.status ?? "created";
 
   const recordingUrl = useMemo(
     () => capture?.recordingUrl ? proxyAudioUrl(capture.recordingUrl, id) : null,
@@ -341,6 +419,26 @@ export default function CaptureDetailPage() {
     });
   }, [transcriptMutation]);
 
+  const handleDeleteUtterance = useCallback((participant: "a" | "b", index: number, text: string) => {
+    setDeleteTarget({ participant, index, text });
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    const key = `${deleteTarget.participant}-${deleteTarget.index}`;
+    setSavingKey(key);
+    setCsvRegenerating(true);
+    setPendingCsvReload(true);
+    setDeleteTarget(null);
+    transcriptMutation.mutate({ participant: deleteTarget.participant, index: deleteTarget.index, action: "delete" }, {
+      onSettled: () => setSavingKey(null),
+      onSuccess: () => {
+        toast.success("Utterance deleted — CSV regenerating...");
+      },
+      onError: () => { setCsvRegenerating(false); setPendingCsvReload(false); },
+    });
+  }, [deleteTarget, transcriptMutation]);
+
   // After edit, wait for CSV worker to finish then reload CSV in Sheet
   useEffect(() => {
     if (!pendingCsvReload) return;
@@ -381,7 +479,7 @@ export default function CaptureDetailPage() {
   const callFailed = capture.status === "failed" || (capture.status === "ended" && !hasRecordings);
   const cfg = callFailed
     ? { label: "Call Failed", badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900", dot: "bg-red-500 dark:bg-red-400" }
-    : (statusConfig[capture.status] ?? statusConfig.created);
+    : (statusConfig[displayStatus] ?? statusConfig.created);
 
   const isCompleted = capture.status === "completed";
   const isPreCall = capture.status === "created" || capture.status === "calling" || capture.status === "active";
@@ -474,6 +572,13 @@ export default function CaptureDetailPage() {
             {cfg.label}
           </Badge>
 
+          {isAdmin && capture.verified === false && (
+            <Button size="sm" onClick={() => verifyMutation.mutate()} disabled={verifyMutation.isPending}>
+              {verifyMutation.isPending
+                ? <><LoaderCircle className="size-4 animate-spin" /> Verifying...</>
+                : <><ShieldCheck className="size-3.5" /> Verify</>}
+            </Button>
+          )}
           {capture.status === "created" && (
             <Button size="sm" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}>
               {startMutation.isPending
@@ -611,6 +716,11 @@ export default function CaptureDetailPage() {
                   <div className="py-2 flex items-center justify-between">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
                       Conversation
+                      {flagCount > 0 && (
+                        <span className="ml-2 text-amber-600 dark:text-amber-400 normal-case tracking-normal">
+                          ({flagCount} flagged)
+                        </span>
+                      )}
                     </p>
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-1.5">
@@ -629,7 +739,8 @@ export default function CaptureDetailPage() {
                     utterancesB={utterancesB}
                     phoneA={capture.phoneA}
                     phoneB={capture.phoneB}
-                    onEditUtterance={handleEditUtterance}
+                    onEditUtterance={isAdmin ? handleEditUtterance : undefined}
+                    onDeleteUtterance={isAdmin ? handleDeleteUtterance : undefined}
                     savingKey={savingKey}
                   />
                 </motion.div>
@@ -657,6 +768,33 @@ export default function CaptureDetailPage() {
 
         </motion.div>
       </div>
+
+      {/* Delete utterance confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete utterance?</DialogTitle>
+            <DialogDescription>
+              This will permanently remove this utterance from the transcript and regenerate the CSV.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground line-clamp-3">
+              &ldquo;{deleteTarget.text}&rdquo;
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+            <Button variant="destructive" onClick={confirmDelete} disabled={transcriptMutation.isPending}>
+              {transcriptMutation.isPending ? (
+                <><LoaderCircle className="size-3.5 animate-spin" /> Deleting...</>
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

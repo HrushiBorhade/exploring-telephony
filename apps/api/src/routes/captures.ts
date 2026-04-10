@@ -275,18 +275,23 @@ router.post("/api/captures/:id/end", requireAuth, async (req: AuthRequest, res) 
   }
 });
 
-// Edit transcript utterance + trigger CSV regeneration
-router.patch("/api/captures/:id/transcript", requireAuth, async (req: AuthRequest, res) => {
+// Edit/delete transcript utterance + trigger CSV regeneration (admin-only)
+router.patch("/api/captures/:id/transcript", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
   const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
-  if (capture.userId !== req.userId && req.userRole !== "admin") {
-    res.status(403).json({ error: "Forbidden" }); return;
-  }
 
-  const { participant, index, text } = req.body;
-  if (!participant || typeof index !== "number" || typeof text !== "string") {
-    res.status(400).json({ error: "Required: participant (a|b), index (number), text (string)" });
+  const { participant, index, text, action = "edit" } = req.body;
+  if (!participant || typeof index !== "number") {
+    res.status(400).json({ error: "Required: participant (a|b), index (number)" });
+    return;
+  }
+  if (action !== "edit" && action !== "delete") {
+    res.status(400).json({ error: "action must be 'edit' or 'delete'" });
+    return;
+  }
+  if (action === "edit" && typeof text !== "string") {
+    res.status(400).json({ error: "Required for edit: text (string)" });
     return;
   }
 
@@ -297,15 +302,22 @@ router.patch("/api/captures/:id/transcript", requireAuth, async (req: AuthReques
 
     const utterances = JSON.parse(raw);
     if (index < 0 || index >= utterances.length) {
-      res.status(400).json({ error: `Index ${index} out of range (0-${utterances.length - 1})` });
+      const rangeMsg = utterances.length === 0
+        ? "transcript is empty"
+        : `valid range is 0-${utterances.length - 1}`;
+      res.status(400).json({ error: `Index ${index} out of bounds: ${rangeMsg}` });
       return;
     }
 
-    utterances[index].text = text;
+    if (action === "delete") {
+      utterances.splice(index, 1);
+    } else {
+      utterances[index].text = text;
+    }
     const updated = JSON.stringify(utterances);
 
     await dbq.updateCapture(id, { [field]: updated });
-    logger.info({ captureId: id, participant, index }, "[CAPTURE] Transcript edited");
+    logger.info({ captureId: id, participant, index, action }, "[CAPTURE] Transcript modified");
 
     // Enqueue lightweight CSV regeneration (no re-transcription)
     await csvQueue.add("csv-regen", { captureId: id }, {
@@ -314,7 +326,30 @@ router.patch("/api/captures/:id/transcript", requireAuth, async (req: AuthReques
 
     res.json({ ok: true });
   } catch (err: any) {
-    logger.error({ captureId: id, error: err.message }, "[CAPTURE] Transcript edit failed");
+    logger.error({ captureId: id, error: err.message }, "[CAPTURE] Transcript modify failed");
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: verify a capture (sets verified = true)
+router.post("/api/captures/:id/verify", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
+  const id = req.params.id as string;
+  try {
+    const capture = await dbq.getCapture(id);
+    if (!capture) { res.status(404).json({ error: "Not found" }); return; }
+    if (capture.status !== "completed") {
+      res.status(400).json({ error: `Cannot verify: status is ${capture.status}, expected completed` });
+      return;
+    }
+    if (capture.verified === true) {
+      res.status(400).json({ error: "Capture is already verified" });
+      return;
+    }
+    await dbq.updateCapture(id, { verified: true });
+    logger.info({ captureId: id, adminId: req.userId }, "[CAPTURE] Verified by admin");
+    res.json({ ok: true, verified: true });
+  } catch (err: any) {
+    logger.error({ captureId: id, error: err.message }, "[CAPTURE] Verify failed");
     res.status(500).json({ error: err.message });
   }
 });

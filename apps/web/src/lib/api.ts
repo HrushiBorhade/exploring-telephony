@@ -247,13 +247,33 @@ export function useUpdateTranscript(captureId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { participant: "a" | "b"; index: number; text: string }) =>
+    mutationFn: (data: {
+      participant: "a" | "b";
+      index: number;
+      text?: string;
+      action?: "edit" | "delete";
+    }) =>
       postJson(`${API}/api/captures/${captureId}/transcript`, data, "PATCH"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: captureKeys.detail(captureId) });
     },
     onError: (err) => {
       toast.error(`Failed to update: ${err.message}`);
+    },
+  });
+}
+
+export function useVerifyCapture(captureId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => postJson(`${API}/api/captures/${captureId}/verify`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: captureKeys.detail(captureId) });
+      toast.success("Capture verified");
+    },
+    onError: (err) => {
+      toast.error(`Failed to verify: ${err.message}`);
     },
   });
 }
