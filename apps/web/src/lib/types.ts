@@ -26,6 +26,8 @@ export interface AdminStats {
   totalUsers: number;
   totalCaptures: number;
   completedCaptures: number;
+  pendingReview: number;
+  verified: number;
   totalDuration: number;
   thisWeek: number;
 }
@@ -38,6 +40,7 @@ export interface Capture {
   phoneB: string;
   language: string;
   status: "created" | "calling" | "active" | "ended" | "processing" | "completed" | "failed";
+  verified?: boolean | null;
   roomName?: string;
   egressId?: string;
   recordingUrl?: string;
@@ -53,6 +56,12 @@ export interface Capture {
   endedAt?: string;
 }
 
+export interface ModerationFlag {
+  type: "pii" | "abuse" | "confidential";
+  severity: "high" | "medium" | "low";
+  description: string;
+}
+
 export interface Utterance {
   start: number;
   end: number;
@@ -60,6 +69,7 @@ export interface Utterance {
   language: string;
   emotion: "happy" | "sad" | "angry" | "neutral";
   audioUrl: string;
+  flags?: ModerationFlag[];
 }
 
 export interface UserProfile {

@@ -1,3 +1,9 @@
+export interface ModerationFlag {
+  type: "pii" | "abuse" | "confidential";
+  severity: "high" | "medium" | "low";
+  description: string;
+}
+
 export interface Capture {
   id: string;
   userId?: string;
@@ -6,6 +12,7 @@ export interface Capture {
   phoneB: string;
   language: string;
   status: "created" | "calling" | "active" | "ended" | "processing" | "completed" | "failed";
+  verified?: boolean | null;
   roomName?: string;
   egressId?: string;
   recordingUrl?: string;

@@ -22,8 +22,10 @@ const statusConfig: Record<string, { label: string; className: string; dot: stri
   active:     { label: "Live",       className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
   ended:      { label: "Ended",      className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",               dot: "bg-zinc-400 dark:bg-zinc-500" },
   processing: { label: "Processing", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900",     dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
-  failed:     { label: "Failed",     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",                       dot: "bg-red-500 dark:bg-red-400" },
-  completed:  { label: "Completed",  className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",                 dot: "bg-blue-500 dark:bg-blue-400" },
+  failed:          { label: "Failed",       className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",                       dot: "bg-red-500 dark:bg-red-400" },
+  completed:       { label: "Completed",   className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",                 dot: "bg-blue-500 dark:bg-blue-400" },
+  pending_review:  { label: "Under Review", className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900",           dot: "bg-amber-500 dark:bg-amber-400" },
+  verified:        { label: "Verified",     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400" },
 };
 
 function formatDuration(s?: number | null) {
@@ -221,9 +223,14 @@ export default function CaptureDashboard() {
               <TableBody>
                 {captures.map((c, i) => {
                   const callFailed = c.status === "ended" && !c.startedAt;
+                  const ds = c.status === "completed"
+                    ? (c as any).verified === true ? "verified"
+                    : (c as any).verified === false ? "pending_review"
+                    : "completed"
+                    : c.status;
                   const sc = callFailed
                     ? statusConfig.failed
-                    : (statusConfig[c.status] ?? statusConfig.created);
+                    : (statusConfig[ds] ?? statusConfig.created);
                   return (
                     <TableRow
                       key={c.id}

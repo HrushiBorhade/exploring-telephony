@@ -20,8 +20,10 @@ const statusConfig: Record<string, { label: string; className: string; dot: stri
   active:     { label: "Live",       className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500" },
   ended:      { label: "Ended",      className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",               dot: "bg-zinc-400" },
   processing: { label: "Processing", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900",     dot: "bg-purple-500" },
-  failed:     { label: "Failed",     className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",                       dot: "bg-red-500" },
-  completed:  { label: "Completed",  className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",                 dot: "bg-blue-500" },
+  failed:          { label: "Failed",        className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",                       dot: "bg-red-500" },
+  completed:       { label: "Completed",   className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",                 dot: "bg-blue-500" },
+  pending_review:  { label: "Pending Review", className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900",         dot: "bg-amber-500" },
+  verified:        { label: "Verified",      className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500" },
 };
 
 function formatDuration(s?: number | null) {
@@ -77,7 +79,14 @@ export default function AdminCapturesPage() {
 
   // Client-side filter (API returns all, we filter here for instant UX)
   const filtered = allCaptures.filter((c) => {
-    if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    if (statusFilter !== "all") {
+      const ds = c.status === "completed"
+        ? (c as any).verified === true ? "verified"
+        : (c as any).verified === false ? "pending_review"
+        : "completed"
+        : c.status;
+      if (ds !== statusFilter) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -121,6 +130,8 @@ export default function AdminCapturesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="pending_review">Pending Review</SelectItem>
+            <SelectItem value="verified">Verified</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
             <SelectItem value="processing">Processing</SelectItem>
             <SelectItem value="active">Live</SelectItem>
@@ -151,7 +162,12 @@ export default function AdminCapturesPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((capture, i) => {
-                const cfg = statusConfig[capture.status] ?? statusConfig.created;
+                const ds = capture.status === "completed"
+                  ? (capture as any).verified === true ? "verified"
+                  : (capture as any).verified === false ? "pending_review"
+                  : "completed"
+                  : capture.status;
+                const cfg = statusConfig[ds] ?? statusConfig.created;
                 return (
                   <TableRow
                     key={capture.id}

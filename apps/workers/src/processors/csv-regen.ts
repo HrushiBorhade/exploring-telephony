@@ -1,6 +1,7 @@
 import { type Job } from "bullmq";
 import * as dbq from "@repo/db";
 import { generateDatasetCsv } from "../lib/csv";
+import { moderateTranscript } from "../lib/moderation";
 import { uploadToS3 } from "../lib/s3";
 import { logger } from "../logger";
 import type { Segment } from "../lib/gemini";
@@ -57,7 +58,22 @@ export async function processCsvRegen(job: Job<CsvRegenJobData>): Promise<void> 
     "text/csv",
   );
 
-  await dbq.updateCapture(captureId, { datasetCsvUrl: csvUrl });
+  // Re-run moderation on edited transcripts and reset verified
+  const parseUtterancesForModeration = (raw: string | null) => {
+    if (!raw) return [];
+    return JSON.parse(raw) as Array<{ text: string; [key: string]: unknown }>;
+  };
 
-  log.info({ csvUrl }, "CSV regeneration complete");
+  const uttA = parseUtterancesForModeration(capture.transcriptA ?? null);
+  const uttB = parseUtterancesForModeration(capture.transcriptB ?? null);
+  const moderated = await moderateTranscript(uttA, uttB);
+
+  await dbq.updateCapture(captureId, {
+    datasetCsvUrl: csvUrl,
+    transcriptA: JSON.stringify(moderated.utterancesA),
+    transcriptB: JSON.stringify(moderated.utterancesB),
+    verified: false,
+  });
+
+  log.info({ csvUrl }, "CSV regeneration + moderation re-scan complete");
 }

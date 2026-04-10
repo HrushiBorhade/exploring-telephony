@@ -89,6 +89,8 @@ export async function getAdminStats() {
     .select({
       total: count(),
       completed: count(sql`CASE WHEN ${schema.captures.status} = 'completed' THEN 1 END`),
+      pendingReview: count(sql`CASE WHEN ${schema.captures.status} = 'completed' AND ${schema.captures.verified} = false THEN 1 END`),
+      verified: count(sql`CASE WHEN ${schema.captures.verified} = true THEN 1 END`),
       totalDuration: sum(schema.captures.durationSeconds),
     })
     .from(schema.captures);
@@ -107,6 +109,8 @@ export async function getAdminStats() {
     totalUsers: users?.totalUsers ?? 0,
     totalCaptures: totals?.total ?? 0,
     completedCaptures: Number(totals?.completed ?? 0),
+    pendingReview: Number(totals?.pendingReview ?? 0),
+    verified: Number(totals?.verified ?? 0),
     totalDuration: Number(totals?.totalDuration ?? 0),
     thisWeek: weekly?.thisWeek ?? 0,
   };

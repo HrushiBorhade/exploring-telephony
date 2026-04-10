@@ -7,6 +7,7 @@ import { transcribeWithGemini, type Segment } from "../lib/gemini";
 import { convertToMp3, sliceToMp3, formatTimestamp, getDuration, trimStart } from "../lib/ffmpeg";
 import { uploadToS3, downloadFromS3, deleteS3Prefix } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
+import { moderateTranscript } from "../lib/moderation";
 import { logger } from "../logger";
 
 export interface AudioJobData {
@@ -162,32 +163,46 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       "application/json",
     );
 
-    // ── Step 7: Update database ────────────────────────────────────
+    // ── Step 7: Build utterance objects ──────────────────────────────
+    await job.updateProgress(85);
+    log.info("Step 7: Building utterances");
+
+    const utterancesA = resultA.segments.map((s, i) => ({
+      start: s.startSeconds,
+      end: s.endSeconds,
+      text: s.content,
+      language: s.language,
+      emotion: s.emotion,
+      audioUrl: clipUrlsA[i],
+    }));
+    const utterancesB = resultB.segments.map((s, i) => ({
+      start: s.startSeconds,
+      end: s.endSeconds,
+      text: s.content,
+      language: s.language,
+      emotion: s.emotion,
+      audioUrl: clipUrlsB[i],
+    }));
+
+    // ── Step 7b: Moderation scan (embed flags in utterances) ──────
     await job.updateProgress(90);
-    log.info("Step 7: Saving to database");
+    log.info("Step 7b: Running moderation scan");
+
+    const moderated = await moderateTranscript(utterancesA, utterancesB);
+
+    // ── Step 8: Update database ────────────────────────────────────
+    await job.updateProgress(95);
+    log.info("Step 8: Saving to database");
 
     await dbq.updateCapture(captureId, {
       status: "completed",
+      verified: false,
       recordingUrl: mixedUrl2,
       recordingUrlA: trackAUrl,
       recordingUrlB: trackBUrl,
       datasetCsvUrl: csvUrl,
-      transcriptA: JSON.stringify(resultA.segments.map((s, i) => ({
-        start: s.startSeconds,
-        end: s.endSeconds,
-        text: s.content,
-        language: s.language,
-        emotion: s.emotion,
-        audioUrl: clipUrlsA[i],
-      }))),
-      transcriptB: JSON.stringify(resultB.segments.map((s, i) => ({
-        start: s.startSeconds,
-        end: s.endSeconds,
-        text: s.content,
-        language: s.language,
-        emotion: s.emotion,
-        audioUrl: clipUrlsB[i],
-      }))),
+      transcriptA: JSON.stringify(moderated.utterancesA),
+      transcriptB: JSON.stringify(moderated.utterancesB),
     });
 
     await job.updateProgress(100);
