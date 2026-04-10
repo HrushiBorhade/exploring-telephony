@@ -94,7 +94,7 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     ]);
 
     // Re-measure durations AFTER alignment — the trimmed files are shorter
-    const [, alignedDurA, alignedDurB] = await Promise.all([
+    const [alignedDurMixed, alignedDurA, alignedDurB] = await Promise.all([
       getDuration(mixedMp3),
       getDuration(callerAMp3),
       getDuration(callerBMp3),
@@ -204,6 +204,7 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     await dbq.updateCapture(captureId, {
       status: "completed",
       verified: false,
+      durationSeconds: Math.round(alignedDurMixed),
       recordingUrl: mixedUrl2,
       recordingUrlA: trackAUrl,
       recordingUrlB: trackBUrl,
