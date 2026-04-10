@@ -93,6 +93,14 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       trimIfNeeded(callerBMp3, durB, "caller_b"),
     ]);
 
+    // Re-measure durations AFTER alignment — the trimmed files are shorter
+    const [, alignedDurA, alignedDurB] = await Promise.all([
+      getDuration(mixedMp3),
+      getDuration(callerAMp3),
+      getDuration(callerBMp3),
+    ]);
+    log.info({ alignedDurA, alignedDurB }, "Post-alignment durations");
+
     // ── Step 3: Upload full tracks to structured S3 paths ──────────
     await job.updateProgress(25);
     log.info("Step 3: Uploading full tracks");
@@ -103,25 +111,24 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       uploadToS3(`captures/${captureId}/participant-b/full.mp3`, await readFile(callerBMp3), "audio/mpeg"),
     ]);
 
-    // ── Step 4: Transcribe (pass audio duration to prevent hallucinated timestamps) ──
-    // durA, durB, minDuration already computed in Step 2b (alignment)
+    // ── Step 4: Transcribe (pass ALIGNED duration to prevent hallucinated timestamps) ──
     await job.updateProgress(35);
-    log.info({ durA, durB }, "Step 4: Transcribing with Gemini 3.1 Pro");
+    log.info({ alignedDurA, alignedDurB }, "Step 4: Transcribing with Gemini 3.1 Pro");
 
     const [resultA, resultB] = await Promise.all([
-      transcribeWithGemini(await readFile(callerAMp3), "audio/mp3", durA),
-      transcribeWithGemini(await readFile(callerBMp3), "audio/mp3", durB),
+      transcribeWithGemini(await readFile(callerAMp3), "audio/mp3", alignedDurA),
+      transcribeWithGemini(await readFile(callerBMp3), "audio/mp3", alignedDurB),
     ]);
 
-    // Validate: clamp timestamps to actual duration, filter invalid segments
+    // Validate: clamp timestamps to actual (aligned) duration, filter invalid segments
     const validateSegments = (segments: typeof resultA.segments, dur: number) => {
       return segments
         .filter((s) => s.startSeconds >= 0 && s.startSeconds < dur && (s.endSeconds - s.startSeconds) >= 0.3)
         .map((s) => ({ ...s, endSeconds: Math.min(s.endSeconds, dur) }));
     };
 
-    resultA.segments = validateSegments(resultA.segments, durA);
-    resultB.segments = validateSegments(resultB.segments, durB);
+    resultA.segments = validateSegments(resultA.segments, alignedDurA);
+    resultB.segments = validateSegments(resultB.segments, alignedDurB);
 
     log.info({ segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Transcription complete (validated)");
 

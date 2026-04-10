@@ -149,7 +149,7 @@ utterance_text,audio_clip_url,timestamp_start,timestamp_end,participant,particip
    ├── Step 5: SLICE utterances to MP3 clips (parallel, batches of 10)
    │   │
    │   │  For each utterance:
-   │   │    ffmpeg -ss {start} -t {duration} -i full.mp3 -c:a libmp3lame \
+   │   │    ffmpeg -y -i full.mp3 -ss {start} -t {duration} -c:a libmp3lame \
    │   │           -q:a 5 -ar 16000 -ac 1 clip.mp3
    │   │
    │   └── Returns: array of { ...utterance, localClipPath, s3Key }

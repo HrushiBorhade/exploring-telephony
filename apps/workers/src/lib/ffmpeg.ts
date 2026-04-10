@@ -17,11 +17,11 @@ export function convertToMp3(input: string, output: string): Promise<void> {
   return run("ffmpeg", ["-y", "-i", input, ...MP3_OPTS, output]).then(() => {});
 }
 
-/** Slice a segment from an audio file to MP3 */
+/** Slice a segment from an audio file to MP3 (frame-accurate: -ss after -i) */
 export function sliceToMp3(input: string, output: string, startSec: number, endSec: number): Promise<void> {
   const duration = endSec - startSec;
   return run("ffmpeg", [
-    "-y", "-ss", String(startSec), "-t", String(duration), "-i", input, ...MP3_OPTS, output,
+    "-y", "-i", input, "-ss", String(startSec), "-t", String(duration), ...MP3_OPTS, output,
   ]).then(() => {});
 }
 
