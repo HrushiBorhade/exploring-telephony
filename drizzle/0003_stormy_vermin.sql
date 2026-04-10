@@ -1,0 +1,1 @@
+ALTER TABLE "captures_v2" ADD COLUMN "verified" boolean;
