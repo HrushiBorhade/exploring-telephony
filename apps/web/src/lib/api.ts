@@ -13,8 +13,10 @@ const API = process.env.NEXT_PUBLIC_API_URL || "";
  * Output: {API}/api/captures/{captureId}/audio/participant-a/clips/001.mp3
  */
 export function proxyAudioUrl(s3Url: string, captureId: string): string {
-  // Extract the S3 key after captures/{captureId}/
-  // e.g. "https://bucket.s3.region.amazonaws.com/captures/abc123/mixed.mp3" → "mixed.mp3"
+  // Local dev: S3 bucket is private, route through API proxy at localhost:8080
+  // Production: S3 bucket has public-read on captures/*, use S3 URL directly
+  if (!API.includes("localhost")) return s3Url;
+
   const marker = `captures/${captureId}/`;
   const idx = s3Url.indexOf(marker);
   if (idx === -1) return s3Url;
