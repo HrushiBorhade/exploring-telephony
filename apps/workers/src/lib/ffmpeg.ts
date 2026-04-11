@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import path from "path";
 
 /** Run an ffmpeg/ffprobe command and return stdout */
 function run(cmd: string, args: string[]): Promise<string> {
@@ -42,4 +43,50 @@ export function formatTimestamp(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${String(m).padStart(2, "0")}m${String(s).padStart(2, "0")}s`;
+}
+
+export interface AudioChunk {
+  filePath: string;
+  offsetSeconds: number;
+  durationSeconds: number;
+}
+
+export interface ChunkOptions {
+  chunkDuration: number;
+  overlapDuration: number;
+}
+
+/**
+ * Split audio into overlapping chunks for transcription.
+ * Returns the original file as a single chunk if shorter than chunkDuration.
+ */
+export async function splitIntoChunks(
+  input: string,
+  outputDir: string,
+  opts: ChunkOptions,
+): Promise<AudioChunk[]> {
+  const totalDuration = await getDuration(input);
+
+  if (totalDuration <= opts.chunkDuration) {
+    return [{ filePath: input, offsetSeconds: 0, durationSeconds: totalDuration }];
+  }
+
+  const step = opts.chunkDuration - opts.overlapDuration;
+  const chunks: AudioChunk[] = [];
+
+  for (let offset = 0; offset < totalDuration; offset += step) {
+    const remaining = totalDuration - offset;
+    const chunkLen = Math.min(opts.chunkDuration, remaining);
+
+    if (chunkLen < 2) break;
+
+    const chunkPath = path.join(outputDir, `chunk-${chunks.length}.mp3`);
+    await run("ffmpeg", [
+      "-y", "-i", input, "-ss", String(offset), "-t", String(chunkLen), ...MP3_OPTS, chunkPath,
+    ]);
+
+    chunks.push({ filePath: chunkPath, offsetSeconds: offset, durationSeconds: chunkLen });
+  }
+
+  return chunks;
 }

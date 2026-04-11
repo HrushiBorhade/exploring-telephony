@@ -58,9 +58,12 @@ router.get("/api/captures/:captureId/audio/*key", requireAuth, async (req: AuthR
   const ext = key.slice(key.lastIndexOf("."));
 
   try {
-    const { Body, ContentLength } = await s3.send(new GetObjectCommand({
+    // Pass Range header to S3 for byte-range requests (enables scrubbing)
+    const rangeHeader = req.headers.range;
+    const { Body, ContentLength, ContentRange } = await s3.send(new GetObjectCommand({
       Bucket: S3_BUCKET,
       Key: s3Key,
+      ...(rangeHeader && { Range: rangeHeader }),
     }));
 
     if (!Body) {
@@ -68,9 +71,18 @@ router.get("/api/captures/:captureId/audio/*key", requireAuth, async (req: AuthR
       return;
     }
 
-    res.setHeader("Content-Type", MIME[ext] || "application/octet-stream");
+    const contentType = MIME[ext] || "application/octet-stream";
+    res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "private, max-age=3600");
-    if (ContentLength) res.setHeader("Content-Length", ContentLength);
+    res.setHeader("Accept-Ranges", "bytes");
+
+    if (rangeHeader && ContentRange) {
+      res.status(206);
+      res.setHeader("Content-Range", ContentRange);
+      if (ContentLength) res.setHeader("Content-Length", ContentLength);
+    } else {
+      if (ContentLength) res.setHeader("Content-Length", ContentLength);
+    }
 
     // Pipe the S3 readable stream directly to the response
     const stream = Body as Readable;

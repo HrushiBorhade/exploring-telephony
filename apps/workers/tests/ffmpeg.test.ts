@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { convertToMp3, sliceToMp3, formatTimestamp } from "../src/lib/ffmpeg";
+import { convertToMp3, sliceToMp3, formatTimestamp, splitIntoChunks } from "../src/lib/ffmpeg";
 
 const execFileAsync = promisify(execFile);
 
@@ -69,5 +69,55 @@ describe("sliceToMp3", () => {
 
     const clipData = await readFile(clipPath);
     expect(clipData.length).toBeGreaterThan(0);
+  });
+});
+
+describe("splitIntoChunks", () => {
+  it("returns single chunk for short audio", async () => {
+    const wavPath = path.join(tmpDir, "short.wav");
+    await createTestWav(wavPath, 30);
+
+    const chunks = await splitIntoChunks(wavPath, tmpDir, {
+      chunkDuration: 600,
+      overlapDuration: 15,
+    });
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].offsetSeconds).toBe(0);
+    expect(chunks[0].filePath).toBe(wavPath);
+  });
+
+  it("splits long audio into overlapping chunks", async () => {
+    const wavPath = path.join(tmpDir, "long.wav");
+    await createTestWav(wavPath, 65);
+
+    const chunks = await splitIntoChunks(wavPath, tmpDir, {
+      chunkDuration: 30,
+      overlapDuration: 5,
+    });
+
+    // 65s with 30s chunks, 5s overlap (step=25):
+    // chunk 0: 0-30s, chunk 1: 25-55s, chunk 2: 50-65s
+    expect(chunks).toHaveLength(3);
+    expect(chunks[0].offsetSeconds).toBe(0);
+    expect(chunks[1].offsetSeconds).toBe(25);
+    expect(chunks[2].offsetSeconds).toBe(50);
+
+    for (const chunk of chunks) {
+      const data = await readFile(chunk.filePath);
+      expect(data.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("handles audio exactly at chunk boundary", async () => {
+    const wavPath = path.join(tmpDir, "exact.wav");
+    await createTestWav(wavPath, 30);
+
+    const chunks = await splitIntoChunks(wavPath, tmpDir, {
+      chunkDuration: 30,
+      overlapDuration: 5,
+    });
+
+    expect(chunks).toHaveLength(1);
   });
 });

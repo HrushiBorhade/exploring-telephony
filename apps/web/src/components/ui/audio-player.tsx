@@ -291,12 +291,15 @@ export const AudioPlayerProgress = ({
   const player = useAudioPlayer()
   const time = useAudioPlayerTime()
   const wasPlayingRef = useRef(false)
+  const [scrubbing, setScrubbing] = useState(false)
+  const [scrubValue, setScrubValue] = useState(0)
 
   return (
     <SliderPrimitive.Root
       {...otherProps}
-      value={[time]}
+      value={[scrubbing ? scrubValue : time]}
       onValueChange={(vals) => {
+        setScrubValue(vals[0])
         player.seek(vals[0])
         otherProps.onValueChange?.(vals)
       }}
@@ -305,10 +308,13 @@ export const AudioPlayerProgress = ({
       step={otherProps.step || 0.25}
       onPointerDown={(e) => {
         wasPlayingRef.current = player.isPlaying
+        setScrubbing(true)
+        setScrubValue(time)
         player.pause()
         otherProps.onPointerDown?.(e)
       }}
       onPointerUp={(e) => {
+        setScrubbing(false)
         if (wasPlayingRef.current) {
           player.play()
         }
