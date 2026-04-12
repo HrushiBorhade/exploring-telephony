@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { eq, and, gt, gte, desc, sql, inArray, count, sum } from "drizzle-orm";
 import { db } from "./index";
 import * as schema from "./schema";
@@ -253,5 +254,76 @@ export async function setLanguages(
       );
     }
   });
+}
+
+// ── Theme Sample queries ──────────────────────────────────────────────
+
+/**
+ * Atomically assign a random available theme sample to a capture.
+ * Uses FOR UPDATE SKIP LOCKED to prevent race conditions.
+ */
+export async function assignThemeSample(
+  captureId: string,
+  languages: string[],
+) {
+  if (languages.length === 0) return null;
+
+  const token = crypto.randomBytes(16).toString("hex");
+
+  const rows = await db.execute(sql`
+    UPDATE theme_samples
+    SET status = 'assigned',
+        assigned_capture_id = ${captureId},
+        assigned_at = NOW(),
+        public_token = ${token}
+    WHERE id = (
+      SELECT id FROM theme_samples
+      WHERE status = 'available'
+        AND language IN (${sql.join(languages.map(l => sql`${l}`), sql`, `)})
+      ORDER BY RANDOM()
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
+  `);
+
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function getThemeSampleByToken(token: string) {
+  return db.query.themeSamples.findFirst({
+    where: eq(schema.themeSamples.publicToken, token),
+  });
+}
+
+export async function getThemeSampleByCaptureId(captureId: string) {
+  return db.query.themeSamples.findFirst({
+    where: eq(schema.themeSamples.assignedCaptureId, captureId),
+  });
+}
+
+export async function releaseThemeSample(captureId: string) {
+  await db
+    .update(schema.themeSamples)
+    .set({ status: "available", assignedCaptureId: null, assignedAt: null, publicToken: null })
+    .where(eq(schema.themeSamples.assignedCaptureId, captureId));
+}
+
+export async function completeThemeSample(captureId: string) {
+  await db
+    .update(schema.themeSamples)
+    .set({ status: "completed" })
+    .where(eq(schema.themeSamples.assignedCaptureId, captureId));
+}
+
+export async function getThemeSampleAvailability() {
+  return db
+    .select({
+      language: schema.themeSamples.language,
+      available: count(sql`CASE WHEN ${schema.themeSamples.status} = 'available' THEN 1 END`),
+      total: count(),
+    })
+    .from(schema.themeSamples)
+    .groupBy(schema.themeSamples.language);
 }
 
