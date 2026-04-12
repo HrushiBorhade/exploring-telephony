@@ -69,6 +69,7 @@ router.post("/api/captures/themed", requireAuth, async (req: AuthRequest, res) =
       language: sample.language as string,
       status: "created",
       roomName,
+      themeSampleId: sample.id,
       createdAt: new Date().toISOString(),
     };
 
@@ -84,6 +85,7 @@ router.post("/api/captures/themed", requireAuth, async (req: AuthRequest, res) =
         language: capture.language,
         status: "created",
         roomName,
+        themeSampleId: sample.id,
       });
     } catch (err) {
       await dbq.releaseThemeSample(id);
