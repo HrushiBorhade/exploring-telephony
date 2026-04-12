@@ -41,6 +41,7 @@ export interface Capture {
   language: string;
   status: "created" | "calling" | "active" | "ended" | "processing" | "completed" | "failed";
   verified?: boolean | null;
+  themeSampleId?: number | null;
   roomName?: string;
   egressId?: string;
   recordingUrl?: string;
@@ -97,4 +98,25 @@ export interface ProfileResponse {
   profile: UserProfile | null;
   languages: UserLanguage[];
   onboardingCompleted: boolean;
+}
+
+export interface ThemeSample {
+  id: number;
+  category: "alphanumeric" | "healthcare" | "short_utterances";
+  language: "hindi" | "telugu";
+  data: Record<string, string>;
+  status: "available" | "assigned" | "completed";
+  publicToken: string | null;
+}
+
+export interface ThemeAvailability {
+  language: string;
+  available: number;
+  total: number;
+}
+
+export interface FormValidationResult {
+  field: string;
+  submitted: string;
+  correct: boolean;
 }

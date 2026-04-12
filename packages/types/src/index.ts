@@ -13,6 +13,7 @@ export interface Capture {
   language: string;
   status: "created" | "calling" | "active" | "ended" | "processing" | "completed" | "failed";
   verified?: boolean | null;
+  themeSampleId?: number | null;
   roomName?: string;
   egressId?: string;
   recordingUrl?: string;
@@ -28,4 +29,16 @@ export interface Capture {
   _joinedCallers?: Set<string>;
   _egressStarting?: boolean;
   _egressIds?: string[];
+}
+
+export interface ThemeSample {
+  id: number;
+  category: "alphanumeric" | "healthcare" | "short_utterances";
+  language: "hindi" | "telugu";
+  data: string;
+  status: "available" | "assigned" | "completed";
+  assignedCaptureId: string | null;
+  assignedAt: string | null;
+  publicToken: string | null;
+  createdAt: string;
 }
