@@ -11,6 +11,14 @@ function getDeepgram(): DeepgramClient {
   return _deepgram;
 }
 
+/**
+ * Transcribe audio with Deepgram nova-3.
+ *
+ * Uses language="hi" (Hindi) as default — this handles English code-mixing
+ * natively and produces Devanagari script for Hindi words. Works correctly
+ * on pure English audio too. For a platform focused on Indian telephony,
+ * this is the most reliable setting.
+ */
 export async function transcribeWithDeepgram(
   audioBuffer: Buffer,
   mimeType: string = "audio/mp3",
@@ -20,23 +28,21 @@ export async function transcribeWithDeepgram(
   const data: any = await getDeepgram().listen.v1.media.transcribeFile(audioBuffer, {
     model: "nova-3",
     smart_format: true,
-    detect_language: true,
     utterances: true,
     punctuate: true,
-    language: "multi",
+    language: "hi",
     utt_split: 1.0,
   });
 
   const segments: Segment[] = [];
 
-  // Use utterances for timestamped segments
   const utterances = data?.results?.utterances ?? [];
   for (const u of utterances) {
     segments.push({
       startSeconds: u.start,
       endSeconds: u.end,
       content: u.transcript,
-      language: (u as any).languages?.[0] || (data?.results?.channels?.[0] as any)?.detected_language || "en",
+      language: "hi",
       emotion: "neutral",
     });
   }
@@ -51,7 +57,7 @@ export async function transcribeWithDeepgram(
         startSeconds: 0,
         endSeconds: lastWord?.end ?? 0,
         content: alt.transcript,
-        language: (channel as any)?.detected_language || "en",
+        language: "hi",
         emotion: "neutral",
       });
     }
