@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { convertToMp3, sliceToMp3, formatTimestamp, splitIntoChunks } from "../src/lib/ffmpeg";
+import { convertToMp3, sliceMp3, formatTimestamp, splitIntoChunks } from "../src/lib/ffmpeg";
 
 const execFileAsync = promisify(execFile);
 
@@ -59,13 +59,15 @@ describe("convertToMp3", () => {
   });
 });
 
-describe("sliceToMp3", () => {
-  it("slices a segment to MP3", async () => {
-    const wavPath = path.join(tmpDir, "full.wav");
+describe("sliceMp3", () => {
+  it("slices a segment from MP3 with -c copy", async () => {
+    const wavPath = path.join(tmpDir, "full-for-slice.wav");
+    const mp3Path = path.join(tmpDir, "full.mp3");
     const clipPath = path.join(tmpDir, "clip.mp3");
 
     await createTestWav(wavPath, 5);
-    await sliceToMp3(wavPath, clipPath, 1, 3);
+    await convertToMp3(wavPath, mp3Path);
+    await sliceMp3(mp3Path, clipPath, 1, 3);
 
     const clipData = await readFile(clipPath);
     expect(clipData.length).toBeGreaterThan(0);
@@ -89,9 +91,11 @@ describe("splitIntoChunks", () => {
 
   it("splits long audio into overlapping chunks", async () => {
     const wavPath = path.join(tmpDir, "long.wav");
+    const mp3Path = path.join(tmpDir, "long.mp3");
     await createTestWav(wavPath, 65);
+    await convertToMp3(wavPath, mp3Path);
 
-    const chunks = await splitIntoChunks(wavPath, tmpDir, {
+    const chunks = await splitIntoChunks(mp3Path, tmpDir, {
       chunkDuration: 30,
       overlapDuration: 5,
     });

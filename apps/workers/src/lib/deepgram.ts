@@ -23,6 +23,8 @@ export async function transcribeWithDeepgram(
     detect_language: true,
     utterances: true,
     punctuate: true,
+    language: "multi",
+    utt_split: 1.0,
   });
 
   const segments: Segment[] = [];

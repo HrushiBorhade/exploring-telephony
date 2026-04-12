@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetTrigger } from "@/components/ui/sheet";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
@@ -232,20 +233,25 @@ const ConversationBubble = memo(function ConversationBubble({
           <span className={`text-[10px] ${emoCls}`}>{turn.utterance.emotion}</span>
           <span className="text-[10px] text-muted-foreground uppercase">{turn.utterance.language}</span>
           {flags.map((flag, fi) => (
-            <span
-              key={fi}
-              className={`inline-flex items-center gap-0.5 text-[9px] font-medium uppercase px-1 py-0.5 rounded ${
-                flag.severity === "high"
-                  ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
-                  : flag.severity === "medium"
-                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
-                  : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-400"
-              }`}
-              title={flag.description}
-            >
-              <AlertTriangle className="size-2.5" />
-              {flag.type}
-            </span>
+            <TooltipProvider key={fi}>
+              <Tooltip>
+                <TooltipTrigger
+                  className={`inline-flex items-center gap-0.5 text-[9px] font-medium uppercase px-1 py-0.5 rounded cursor-help ${
+                    flag.severity === "high"
+                      ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-400"
+                      : flag.severity === "medium"
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400"
+                      : "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-400"
+                  }`}
+                >
+                  <AlertTriangle className="size-2.5" />
+                  {flag.type}
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <span className="capitalize font-medium">{flag.severity}</span>: {flag.description}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ))}
         </div>
 

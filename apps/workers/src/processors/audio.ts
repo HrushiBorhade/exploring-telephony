@@ -3,8 +3,9 @@ import { readFile, writeFile, mkdtemp, rm, rename } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import * as dbq from "@repo/db";
-import { transcribeWithGemini, type Segment } from "../lib/gemini";
-import { convertToMp3, sliceToMp3, formatTimestamp, getDuration, trimStart } from "../lib/ffmpeg";
+import { transcribeWithDeepgram } from "../lib/deepgram";
+import { type Segment } from "../lib/gemini";
+import { convertToMp3, sliceMp3, formatTimestamp, getDuration, trimStart } from "../lib/ffmpeg";
 import { uploadToS3, downloadFromS3, deleteS3Prefix } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { moderateTranscript } from "../lib/moderation";
@@ -26,7 +27,7 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
   const tmpDir = await mkdtemp(path.join(tmpdir(), `audio-${captureId}-`));
 
   try {
-    // ── Step 1: Download all 3 recordings ──────────────────────────
+    // ── Step 1: Download recordings from S3 ───────────────────────
     await job.updateProgress(5);
     log.info("Step 1: Downloading recordings");
 
@@ -46,8 +47,8 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       writeFile(callerBRaw, callerBBuf),
     ]);
 
-    // ── Step 2: Convert to MP3 ─────────────────────────────────────
-    await job.updateProgress(15);
+    // ── Step 2: Convert to MP3 16kHz mono ─────────────────────────
+    await job.updateProgress(10);
     log.info("Step 2: Converting to MP3");
 
     const mixedMp3 = path.join(tmpDir, "mixed.mp3");
@@ -60,14 +61,7 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       convertToMp3(callerBRaw, callerBMp3),
     ]);
 
-    // ── Step 2b: Align all tracks to same duration ────────────────
-    // Egresses start at slightly different times (RoomComposite initializes
-    // faster than ParticipantEgress). They all STOP at the same time
-    // (synchronized stopEgress). So the difference is only at the start.
-    // We trim the beginning of longer tracks to match the shortest,
-    // removing only silence/initialization overhead — no speech is lost
-    // because the agent's 3s buffer + announcement ensures all egresses
-    // are recording before callers start talking.
+    // ── Step 3: Align tracks (trim longer starts) ─────────────────
     const [durMixed, durA, durB] = await Promise.all([
       getDuration(mixedMp3),
       getDuration(callerAMp3),
@@ -93,7 +87,6 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       trimIfNeeded(callerBMp3, durB, "caller_b"),
     ]);
 
-    // Re-measure durations AFTER alignment — the trimmed files are shorter
     const [alignedDurMixed, alignedDurA, alignedDurB] = await Promise.all([
       getDuration(mixedMp3),
       getDuration(callerAMp3),
@@ -101,9 +94,9 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     ]);
     log.info({ alignedDurA, alignedDurB }, "Post-alignment durations");
 
-    // ── Step 3: Upload full tracks to structured S3 paths ──────────
-    await job.updateProgress(25);
-    log.info("Step 3: Uploading full tracks");
+    // ── Step 4: Upload full tracks to S3 ──────────────────────────
+    await job.updateProgress(20);
+    log.info("Step 4: Uploading full tracks");
 
     const [mixedUrl2, trackAUrl, trackBUrl] = await Promise.all([
       uploadToS3(`captures/${captureId}/mixed.mp3`, await readFile(mixedMp3), "audio/mpeg"),
@@ -111,32 +104,31 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       uploadToS3(`captures/${captureId}/participant-b/full.mp3`, await readFile(callerBMp3), "audio/mpeg"),
     ]);
 
-    // ── Step 4: Transcribe (pass ALIGNED duration to prevent hallucinated timestamps) ──
-    await job.updateProgress(35);
-    log.info({ alignedDurA, alignedDurB }, "Step 4: Transcribing with Gemini 3.1 Pro");
+    // ── Step 5: Transcribe with Deepgram (frame-accurate timestamps) ──
+    await job.updateProgress(30);
+    log.info("Step 5: Transcribing with Deepgram nova-3");
 
     const [resultA, resultB] = await Promise.all([
-      transcribeWithGemini(await readFile(callerAMp3), "audio/mp3", alignedDurA),
-      transcribeWithGemini(await readFile(callerBMp3), "audio/mp3", alignedDurB),
+      transcribeWithDeepgram(await readFile(callerAMp3), "audio/mp3"),
+      transcribeWithDeepgram(await readFile(callerBMp3), "audio/mp3"),
     ]);
 
-    // Validate: clamp timestamps to actual (aligned) duration, filter invalid segments
-    const validateSegments = (segments: typeof resultA.segments, dur: number) => {
+    // Validate: filter segments < 0.1s, clamp to track duration
+    const validateSegments = (segments: Segment[], dur: number) => {
       return segments
-        .filter((s) => s.startSeconds >= 0 && s.startSeconds < dur && (s.endSeconds - s.startSeconds) >= 0.3)
+        .filter((s) => s.startSeconds >= 0 && s.startSeconds < dur && (s.endSeconds - s.startSeconds) >= 0.1)
         .map((s) => ({ ...s, endSeconds: Math.min(s.endSeconds, dur) }));
     };
 
     resultA.segments = validateSegments(resultA.segments, alignedDurA);
     resultB.segments = validateSegments(resultB.segments, alignedDurB);
 
-    log.info({ segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Transcription complete (validated)");
+    log.info({ segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Transcription complete");
 
-    // ── Step 5: Clean old clips + slice new ones ──────────────────
+    // ── Step 6: Clip utterances with ffmpeg -c copy (no re-encoding) ──
     await job.updateProgress(50);
-    log.info("Step 5: Cleaning old clips + slicing utterances");
+    log.info("Step 6: Slicing clips");
 
-    // Delete stale clips from previous runs
     await Promise.all([
       deleteS3Prefix(`captures/${captureId}/participant-a/clips/`),
       deleteS3Prefix(`captures/${captureId}/participant-b/clips/`),
@@ -146,9 +138,9 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     await job.updateProgress(65);
     const clipUrlsB = await sliceAndUpload(callerBMp3, resultB.segments, captureId, "participant-b", tmpDir);
 
-    // ── Step 6: Generate CSV for SOTA Labs ─────────────────────────
+    // ── Step 7: Generate CSV ──────────────────────────────────────
     await job.updateProgress(80);
-    log.info("Step 6: Generating dataset CSV");
+    log.info("Step 7: Generating CSV");
 
     const csv = generateDatasetCsv(
       captureId,
@@ -158,48 +150,34 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
 
     const csvUrl = await uploadToS3(`captures/${captureId}/dataset.csv`, Buffer.from(csv, "utf-8"), "text/csv");
 
-    // Also upload full transcript JSON
-    const transcript = {
-      captureId,
-      participantA: resultA.segments.map((s, i) => ({ ...s, clipUrl: clipUrlsA[i] })),
-      participantB: resultB.segments.map((s, i) => ({ ...s, clipUrl: clipUrlsB[i] })),
-    };
     await uploadToS3(
       `captures/${captureId}/transcript.json`,
-      Buffer.from(JSON.stringify(transcript, null, 2), "utf-8"),
+      Buffer.from(JSON.stringify({
+        captureId,
+        participantA: resultA.segments.map((s, i) => ({ ...s, clipUrl: clipUrlsA[i] })),
+        participantB: resultB.segments.map((s, i) => ({ ...s, clipUrl: clipUrlsB[i] })),
+      }, null, 2), "utf-8"),
       "application/json",
     );
 
-    // ── Step 7: Build utterance objects ──────────────────────────────
+    // ── Step 8: Build utterances + moderation ─────────────────────
     await job.updateProgress(85);
-    log.info("Step 7: Building utterances");
+    log.info("Step 8: Moderation scan");
 
     const utterancesA = resultA.segments.map((s, i) => ({
-      start: s.startSeconds,
-      end: s.endSeconds,
-      text: s.content,
-      language: s.language,
-      emotion: s.emotion,
-      audioUrl: clipUrlsA[i],
+      start: s.startSeconds, end: s.endSeconds, text: s.content,
+      language: s.language, emotion: s.emotion, audioUrl: clipUrlsA[i],
     }));
     const utterancesB = resultB.segments.map((s, i) => ({
-      start: s.startSeconds,
-      end: s.endSeconds,
-      text: s.content,
-      language: s.language,
-      emotion: s.emotion,
-      audioUrl: clipUrlsB[i],
+      start: s.startSeconds, end: s.endSeconds, text: s.content,
+      language: s.language, emotion: s.emotion, audioUrl: clipUrlsB[i],
     }));
-
-    // ── Step 7b: Moderation scan (embed flags in utterances) ──────
-    await job.updateProgress(90);
-    log.info("Step 7b: Running moderation scan");
 
     const moderated = await moderateTranscript(utterancesA, utterancesB);
 
-    // ── Step 8: Update database ────────────────────────────────────
+    // ── Step 9: Save to database ──────────────────────────────────
     await job.updateProgress(95);
-    log.info("Step 8: Saving to database");
+    log.info("Step 9: Saving to database");
 
     await dbq.updateCapture(captureId, {
       status: "completed",
@@ -216,11 +194,11 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     await job.updateProgress(100);
     log.info({ csvUrl, segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Pipeline complete");
   } finally {
-    await rm(tmpDir, { recursive: true }).catch(() => {});
+    await rm(tmpDir, { recursive: true }).catch((e) => log.debug({ error: e.message }, "Temp cleanup failed"));
   }
 }
 
-/** Slice all segments from a track and upload to S3, returns array of public URLs */
+/** Slice segments from an MP3 track using -c copy and upload to S3 */
 async function sliceAndUpload(
   audioPath: string,
   segments: Segment[],
@@ -241,12 +219,8 @@ async function sliceAndUpload(
         const clipPath = path.join(tmpDir, `${participant}-${filename}`);
         const s3Key = `captures/${captureId}/${participant}/clips/${filename}`;
 
-        await sliceToMp3(audioPath, clipPath, seg.startSeconds, seg.endSeconds);
+        await sliceMp3(audioPath, clipPath, seg.startSeconds, seg.endSeconds);
         const clipData = await readFile(clipPath);
-        // Skip empty/corrupt clips (< 500 bytes = just MP3 header, no audio)
-        if (clipData.length < 500) {
-          return { idx, url: "" };
-        }
         const url = await uploadToS3(s3Key, clipData, "audio/mpeg");
         return { idx, url };
       }),

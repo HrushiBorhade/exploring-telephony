@@ -48,43 +48,48 @@ export async function moderateTranscript<T extends UtteranceInput>(
     const formatUtterances = (utterances: UtteranceInput[], label: string) =>
       utterances.map((u, i) => `[${label}-${i}] ${u.text}`).join("\n");
 
-    const prompt = `You are a content moderation engine for telephony transcription data.
+    const prompt = `You are a compliance scanner for telephony ASR data. Scan for PII, abuse, and confidential content.
 
-TASK: Scan every utterance below for compliance violations. Return structured flags.
+CATEGORIES:
 
-SCAN CATEGORIES:
-1. PII (personally identifiable information):
-   - Phone numbers (10+ digit sequences, formatted numbers like +91-XXXXX-XXXXX)
-   - Email addresses
-   - Social Security Numbers (XXX-XX-XXXX patterns)
-   - Credit card numbers (13-19 digit sequences)
-   - Physical addresses (street, city, state, zip combinations)
-   - Aadhaar numbers (12-digit Indian ID, XXXX-XXXX-XXXX)
-   - Full names when combined with other identifying info
+PII — personally identifiable information that could identify a real person:
+- Phone numbers: 10+ digits, +91-XXXXX-XXXXX, "ending in 8721"
+- Email addresses: anything@domain.com
+- Aadhaar: 12-digit Indian national ID (XXXX XXXX XXXX or XXXX-XXXX-XXXX)
+- ABHA ID: health ID numbers
+- Credit/debit card numbers: 13-19 digits
+- Addresses: street + city + state/zip combinations
+- Full name + identifying detail (DOB, ID number, phone) = PII. Name alone in greeting = NOT PII.
+- Vehicle/patient IDs when combined with name
 
-2. ABUSIVE CONTENT:
-   - Profanity and vulgar language (in any language/script)
-   - Hate speech, slurs, discriminatory language
-   - Threats of violence or harm
-   - Harassment or intimidation
+ABUSE — harmful or offensive content:
+- Profanity / vulgar language (any language including Hindi expletives)
+- Threats of violence or harm
+- Hate speech, slurs, discriminatory language
+- Harassment or intimidation
 
-3. CONFIDENTIAL CONTENT:
-   - Sensitive business information (revenue, unreleased products, strategy)
-   - Legal privilege or medical record details
-   - Access credentials, passwords, API keys, tokens
-   - Bank account or financial details
+CONFIDENTIAL — sensitive non-public information:
+- Passwords, API keys, tokens, credentials
+- Bank account / financial account numbers
+- Medical test RESULTS with values (e.g. "HbA1c was 6.8") — the values are confidential
+- Unpublished business strategy, revenue numbers
 
-SEVERITY GUIDE:
-- high: Must be addressed before release (SSN, credit cards, threats, passwords, Aadhaar)
-- medium: Should be reviewed (phone numbers, email, profanity, addresses)
-- low: Advisory (partial PII, mild language, borderline confidential)
+NOT flaggable (avoid false positives):
+- Medical TERMINOLOGY without values (BP, ECG, HbA1c, LDL) — these are domain terms
+- Doctor names, clinic names — public information
+- Appointment times/dates — not confidential
+- Generic greetings with first names ("Hi Rahul", "thank you")
+- Standard business operations language
 
-RULES:
-- Return empty flags array [] if no issues found
-- Each flag must reference the exact participant ("a" or "b") and the utterance index
-- Be thorough but avoid false positives on common greetings or standard business terms
-- Medical terminology (BP, ECG, HbA1c) is NOT confidential — it's domain data
-- Names mentioned in casual greeting context ("Hi Rahul") are low severity
+SEVERITY:
+- high: Must redact before dataset release (full Aadhaar, credit card, SSN, explicit threats)
+- medium: Needs review (email, phone number, partial ID, medical results, profanity)
+- low: Advisory only (partial name+context, mild language, borderline cases)
+
+OUTPUT RULES:
+- Return empty flags [] if nothing found
+- In "description", quote the EXACT text that triggered the flag (max 50 chars)
+- Be precise — flag the specific words, not the whole utterance
 
 UTTERANCES:
 Participant A:
@@ -94,7 +99,7 @@ Participant B:
 ${formatUtterances(utterancesB, "b")}`;
 
     const response = await getGenAI().models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: { parts: [{ text: prompt }] },
       config: {
         responseMimeType: "application/json",
