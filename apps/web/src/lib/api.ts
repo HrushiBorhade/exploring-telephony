@@ -37,6 +37,11 @@ export const profileKeys = {
   onboardingStatus: ["profile", "onboarding-status"] as const,
 };
 
+export const themeKeys = {
+  availability: ["theme", "availability"] as const,
+  sample: (captureId: string) => ["theme", "sample", captureId] as const,
+};
+
 // ── Fetchers ────────────────────────────────────────────────────────
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -207,6 +212,53 @@ export function useEndCapture(id: string) {
       if (ctx?.prev) queryClient.setQueryData(captureKeys.detail(id), ctx.prev);
       toast.error(err.message);
     },
+  });
+}
+
+// ── Theme Hooks ─────────────────────────────────────────────────────
+
+export function useThemeAvailability() {
+  return useQuery({
+    queryKey: themeKeys.availability,
+    queryFn: () => fetchJson<{ language: string; available: number; total: number }[]>(`${API}/api/theme-samples/availability`),
+  });
+}
+
+export function useCreateThemedCapture() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { phoneB: string }) =>
+      postJson<{ capture: Capture; themeSample: { id: number; category: string; language: string; data: Record<string, string>; publicToken: string } }>(`${API}/api/captures/themed`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: captureKeys.all });
+      queryClient.invalidateQueries({ queryKey: captureKeys.stats });
+      queryClient.invalidateQueries({ queryKey: themeKeys.availability });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+export function useThemeSample(captureId: string) {
+  return useQuery({
+    queryKey: themeKeys.sample(captureId),
+    queryFn: () => fetchJson<{ id: number; category: string; language: string; data: Record<string, string>; status: string; publicToken: string }>(`${API}/api/captures/${captureId}/theme`),
+    enabled: !!captureId,
+  });
+}
+
+export function useValidateThemeForm(captureId: string) {
+  return useMutation({
+    mutationFn: (values: Record<string, string>) =>
+      postJson<{ results: { field: string; submitted: string; correct: boolean }[]; score: number; total: number; allCorrect: boolean }>(`${API}/api/captures/${captureId}/form/validate`, { values }),
+    onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+export function useResendWhatsApp(captureId: string) {
+  return useMutation({
+    mutationFn: () => postJson<{ ok: boolean }>(`${API}/api/captures/${captureId}/whatsapp/resend`),
+    onSuccess: () => toast.success("WhatsApp message sent"),
+    onError: (err: Error) => toast.error(err.message),
   });
 }
 
