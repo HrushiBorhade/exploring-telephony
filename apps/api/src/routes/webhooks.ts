@@ -65,6 +65,10 @@ router.post("/livekit/webhook", async (req, res) => {
           await dbq.updateCapture(capture.id, {
             status: "ended", endedAt: new Date(), durationSeconds: 0,
           }).catch((e) => logger.error("[DB] metadata failure update failed:", e.message));
+
+          // Release theme sample if this was a themed capture
+          await dbq.releaseThemeSample(capture.id).catch(() => {});
+
           roomService.deleteRoom(roomName).catch(() => {});
         }
       }
@@ -235,6 +239,10 @@ router.post("/livekit/webhook", async (req, res) => {
           );
 
           await dbq.updateCapture(ready.id, { status: "processing" });
+
+          // Mark theme sample as completed
+          await dbq.completeThemeSample(ready.id).catch(() => {});
+
           setTimeout(() => activeCaptures.delete(ready.id), 10_000);
         }
       }
