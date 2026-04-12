@@ -89,6 +89,7 @@ export const captures = pgTable("captures_v2", {
   transcriptB: text("transcript_b"),
   datasetCsvUrl: text("dataset_csv_url"),
   verified: boolean("verified"),
+  themeSampleId: integer("theme_sample_id").references(() => themeSamples.id, { onDelete: "set null" }),
   durationSeconds: integer("duration_seconds"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp("started_at", { withTimezone: true }),
@@ -97,6 +98,7 @@ export const captures = pgTable("captures_v2", {
   index("captures_user_id_idx").on(t.userId),
   index("captures_egress_id_idx").on(t.egressId),
   index("captures_room_name_idx").on(t.roomName),
+  index("captures_theme_sample_idx").on(t.themeSampleId),
 ]);
 
 // ── Onboarding ────────────────────────────────────────────────────────
@@ -123,4 +125,21 @@ export const userLanguages = pgTable("user_languages", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("user_languages_user_id_idx").on(t.userId),
+]);
+
+// ── Theme Samples ───────────────────────────────────────────────────
+export const themeSamples = pgTable("theme_samples", {
+  id: serial("id").primaryKey(),
+  category: varchar("category", { length: 30 }).notNull(),
+  language: varchar("language", { length: 20 }).notNull(),
+  data: text("data").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("available"),
+  assignedCaptureId: varchar("assigned_capture_id", { length: 12 }).references(() => captures.id, { onDelete: "set null" }),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }),
+  publicToken: varchar("public_token", { length: 32 }).unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("theme_samples_status_language_idx").on(t.status, t.language),
+  index("theme_samples_public_token_idx").on(t.publicToken),
+  index("theme_samples_assigned_capture_idx").on(t.assignedCaptureId),
 ]);
