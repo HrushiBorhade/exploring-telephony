@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
+import { AdminCaptureBanner } from "@/components/admin-capture-banner";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { toast } from "sonner";
@@ -297,6 +298,9 @@ export default function ThemedCaptureDetail() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto">
+      {/* Admin viewing another user's capture */}
+      <AdminCaptureBanner captureUserId={capture.userId} capturePhoneA={capture.phoneA} />
+
       {/* ── Header bar ─────────────────────────────── */}
       <motion.div
         className="flex items-center justify-between gap-2 border-b px-3 sm:px-4 lg:px-6 py-2 sm:py-3"

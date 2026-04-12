@@ -50,7 +50,7 @@ export default function AdminUsersPage() {
   // Guard
   useEffect(() => {
     if (session && (session.user as any)?.role !== "admin") {
-      router.replace("/capture");
+      router.replace("/dashboard");
     }
   }, [session, router]);
 
@@ -131,7 +131,7 @@ export default function AdminUsersPage() {
       const { error } = await authClient.admin.impersonateUser({ userId });
       if (error) throw new Error(error.message);
       // Full page reload — session cookie changed, all caches must clear
-      window.location.href = "/capture";
+      window.location.href = "/dashboard";
     } catch (err: any) {
       toast.error(err.message);
     } finally {

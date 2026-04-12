@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Users, PhoneCall, CheckCircle, Clock, ArrowRight } from "lucide-react";
+import { Users, PhoneCall, CheckCircle, Clock, Target, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
-import { useAdminStats } from "@/lib/api";
+import { useAdminStats, useThemeAvailability } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { useEffect } from "react";
 
@@ -58,17 +58,20 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { data: session } = useSession();
   const { data: stats, isPending } = useAdminStats();
+  const { data: themeAvailability } = useThemeAvailability();
 
-  // Guard: redirect non-admin users
   useEffect(() => {
     if (session && (session.user as any)?.role !== "admin") {
-      router.replace("/capture");
+      router.replace("/dashboard");
     }
   }, [session, router]);
 
   if (isPending) return <DashboardSkeleton />;
 
   const s = stats ?? { totalUsers: 0, totalCaptures: 0, completedCaptures: 0, totalDuration: 0, thisWeek: 0 };
+
+  const totalAvailable = themeAvailability?.reduce((sum, l) => sum + l.available, 0) ?? 0;
+  const totalThemes = themeAvailability?.reduce((sum, l) => sum + l.total, 0) ?? 0;
 
   return (
     <motion.div
@@ -77,6 +80,7 @@ export default function AdminDashboard() {
       animate="visible"
       variants={pageStagger}
     >
+      {/* Stats grid */}
       <motion.div variants={pageFadeUp} className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Users"
@@ -102,7 +106,46 @@ export default function AdminDashboard() {
         />
       </motion.div>
 
-      <motion.div variants={pageFadeUp} className="grid gap-4 sm:grid-cols-2">
+      {/* Theme pool card */}
+      {themeAvailability && themeAvailability.length > 0 && (
+        <motion.div variants={pageFadeUp}>
+          <Card className="bg-gradient-to-t from-primary/5 to-card">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Target className="size-4 text-muted-foreground" />
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Theme Sample Pool</CardTitle>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {totalAvailable}/{totalThemes} available
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {themeAvailability.map((lang) => {
+                  const usedPct = totalThemes > 0 ? Math.round(((lang.total - lang.available) / lang.total) * 100) : 0;
+                  return (
+                    <div key={lang.language} className="flex items-center justify-between rounded-lg border p-3">
+                      <div>
+                        <p className="text-sm font-medium capitalize">{lang.language}</p>
+                        <p className="text-xs text-muted-foreground">{lang.available} available / {lang.total} total</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold font-heading tabular-nums">{usedPct}%</p>
+                        <p className="text-[10px] text-muted-foreground">used</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Navigation cards */}
+      <motion.div variants={pageFadeUp} className="grid gap-4 sm:grid-cols-3">
         <Card className="bg-gradient-to-t from-primary/5 to-card cursor-pointer hover:from-primary/10 transition-colors" onClick={() => router.push("/admin/users")}>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">User Management</CardTitle>
@@ -126,7 +169,21 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              Browse all captures across users, filter by status
+              Browse all captures, filter by type and status, verify quality
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-t from-primary/5 to-card cursor-pointer hover:from-primary/10 transition-colors" onClick={() => router.push("/admin/captures?type=themed")}>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Themed Captures</CardTitle>
+            <div className="text-2xl font-bold font-heading flex items-center gap-2">
+              <Target className="size-5" /> Themes
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-muted-foreground">
+              View themed captures, track sample usage per language
             </p>
           </CardContent>
         </Card>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { ChevronRight, Search, Filter } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight, Search, Phone, Target, ListFilter } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { Badge } from "@/components/ui/badge";
@@ -10,24 +10,25 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { useAdminCaptures } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Capture } from "@/lib/types";
 
-const statusConfig: Record<string, { label: string; className: string; dot: string }> = {
-  created:    { label: "Created",    className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",               dot: "bg-zinc-400" },
-  calling:    { label: "Calling",    className: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900",     dot: "bg-yellow-500" },
-  active:     { label: "Live",       className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500" },
-  ended:      { label: "Ended",      className: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700",               dot: "bg-zinc-400" },
-  processing: { label: "Processing", className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400 dark:border-purple-900",     dot: "bg-purple-500" },
-  failed:          { label: "Failed",        className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900",                       dot: "bg-red-500" },
-  completed:       { label: "Completed",   className: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-900",                 dot: "bg-blue-500" },
-  pending_review:  { label: "Pending Review", className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900",         dot: "bg-amber-500" },
-  verified:        { label: "Verified",      className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900", dot: "bg-emerald-500" },
+const statusConfig: Record<string, { label: string; className: string; dot: string; pulse?: boolean }> = {
+  created:         { label: "Created",        className: "bg-muted text-muted-foreground",       dot: "bg-muted-foreground" },
+  calling:         { label: "Dialling",       className: "bg-amber-500/10 text-amber-500",       dot: "bg-amber-500", pulse: true },
+  active:          { label: "Recording",      className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500", pulse: true },
+  ended:           { label: "Uploading",      className: "bg-blue-500/10 text-blue-500",         dot: "bg-blue-500", pulse: true },
+  processing:      { label: "Processing",     className: "bg-violet-500/10 text-violet-500",     dot: "bg-violet-500", pulse: true },
+  failed:          { label: "Failed",         className: "bg-destructive/10 text-destructive",   dot: "bg-destructive" },
+  completed:       { label: "Completed",      className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500" },
+  pending_review:  { label: "Pending Review", className: "bg-amber-500/10 text-amber-500",       dot: "bg-amber-500" },
+  verified:        { label: "Verified",       className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500" },
 };
 
 function formatDuration(s?: number | null) {
-  if (s == null) return "\u2014";
+  if (s == null || s === 0) return null;
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
   return `${m}:${String(sec).padStart(2, "0")}`;
@@ -36,6 +37,7 @@ function formatDuration(s?: number | null) {
 function timeAgo(date: string) {
   const diff = Date.now() - new Date(date).getTime();
   const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
@@ -46,58 +48,89 @@ function timeAgo(date: string) {
 function TableSkeleton() {
   return (
     <div className="space-y-0">
-      {Array.from({ length: 8 }).map((_, i) => (
+      {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-border/50">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-5 w-16 rounded-full" />
-          <Skeleton className="h-4 w-12 ml-auto" />
-          <Skeleton className="h-4 w-16" />
+          <Skeleton className="size-8 rounded-lg" />
+          <div className="space-y-1.5 flex-1">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+          <Skeleton className="h-5 w-20 rounded-full" />
+          <Skeleton className="h-4 w-12" />
+          <Skeleton className="h-4 w-14" />
+          <Skeleton className="h-4 w-4" />
         </div>
       ))}
     </div>
   );
 }
 
+function navigateToCapture(c: Capture, router: ReturnType<typeof useRouter>) {
+  const base = `/dashboard/tasks/${c.id}`;
+  router.push(c.themeSampleId ? `${base}/themed` : base);
+}
+
 export default function AdminCapturesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
+
+  // Read initial type filter from URL (for "Themed Captures" card on admin dashboard)
+  const initialType = searchParams.get("type") === "themed" ? "themed" : "all";
+
+  const [typeFilter, setTypeFilter] = useState<string>(initialType);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
   const { data, isPending } = useAdminCaptures();
 
-  // Guard
   useEffect(() => {
     if (session && (session.user as any)?.role !== "admin") {
-      router.replace("/capture");
+      router.replace("/dashboard");
     }
   }, [session, router]);
 
-  const allCaptures = data?.pages.flatMap((p) => p.items) ?? [];
+  const allCaptures = useMemo(
+    () => data?.pages.flatMap((p) => p.items) ?? [],
+    [data],
+  );
 
-  // Client-side filter (API returns all, we filter here for instant UX)
-  const filtered = allCaptures.filter((c) => {
-    if (statusFilter !== "all") {
-      const ds = c.status === "completed"
-        ? (c as any).verified === true ? "verified"
-        : (c as any).verified === false ? "pending_review"
-        : "completed"
-        : c.status;
-      if (ds !== statusFilter) return false;
+  const filtered = useMemo(() => {
+    let list = allCaptures;
+
+    // Type filter
+    if (typeFilter === "themed") {
+      list = list.filter((c) => !!c.themeSampleId);
+    } else if (typeFilter === "general") {
+      list = list.filter((c) => !c.themeSampleId);
     }
+
+    // Status filter (with verified/pending_review derivation)
+    if (statusFilter !== "all") {
+      list = list.filter((c) => {
+        const ds = c.status === "completed"
+          ? c.verified === true ? "verified"
+          : c.verified === false ? "pending_review"
+          : "completed"
+          : c.status;
+        return ds === statusFilter;
+      });
+    }
+
+    // Search
     if (search) {
       const q = search.toLowerCase();
-      return (
-        c.name?.toLowerCase().includes(q) ||
+      list = list.filter((c) =>
         c.phoneA?.includes(q) ||
         c.phoneB?.includes(q) ||
         c.id?.includes(q)
       );
     }
-    return true;
-  });
+
+    return list;
+  }, [allCaptures, typeFilter, statusFilter, search]);
+
+  const hasActiveFilters = typeFilter !== "all" || statusFilter !== "all" || search !== "";
 
   return (
     <motion.div
@@ -109,95 +142,155 @@ export default function AdminCapturesPage() {
       <motion.div variants={pageFadeUp}>
         <h1 className="text-xl font-semibold font-heading tracking-tight">All Captures</h1>
         <p className="text-sm text-muted-foreground">
-          {allCaptures.length} total {statusFilter !== "all" ? `\u00B7 ${filtered.length} ${statusFilter}` : ""}
+          {hasActiveFilters
+            ? `${filtered.length} of ${allCaptures.length} captures`
+            : `${allCaptures.length} total captures`}
         </p>
       </motion.div>
 
-      <motion.div variants={pageFadeUp} className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
+      {/* Filters */}
+      <motion.div variants={pageFadeUp} className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="relative flex-1 max-w-sm min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search by name, phone, or ID..."
+            placeholder="Search by phone or ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-8 text-xs"
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
-          <SelectTrigger className="w-36">
-            <Filter className="size-3.5 mr-1.5 text-muted-foreground" />
-            <SelectValue />
+
+        <Select value={typeFilter} onValueChange={(v) => v && setTypeFilter(v)}>
+          <SelectTrigger className="w-[120px] sm:w-[140px] h-8 text-xs">
+            <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="pending_review">Pending Review</SelectItem>
-            <SelectItem value="verified">Verified</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="processing">Processing</SelectItem>
-            <SelectItem value="active">Live</SelectItem>
-            <SelectItem value="ended">Ended</SelectItem>
-            <SelectItem value="failed">Failed</SelectItem>
-            <SelectItem value="calling">Calling</SelectItem>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="general">
+              <span className="flex items-center gap-1.5"><Phone className="size-3" /> General</span>
+            </SelectItem>
+            <SelectItem value="themed">
+              <span className="flex items-center gap-1.5"><Target className="size-3" /> Themed</span>
+            </SelectItem>
           </SelectContent>
         </Select>
+
+        <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+          <SelectTrigger className="w-[140px] sm:w-[160px] h-8 text-xs">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="verified">Verified</SelectItem>
+            <SelectItem value="pending_review">Pending Review</SelectItem>
+            <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="processing">Processing</SelectItem>
+            <SelectItem value="active">Recording</SelectItem>
+            <SelectItem value="failed">Failed</SelectItem>
+            <SelectItem value="created">Created</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-muted-foreground"
+            onClick={() => { setTypeFilter("all"); setStatusFilter("all"); setSearch(""); }}
+          >
+            Clear
+          </Button>
+        )}
       </motion.div>
 
-      <motion.div variants={pageFadeUp} className="border rounded-lg overflow-hidden">
+      {/* Table */}
+      <motion.div variants={pageFadeUp} className="border rounded-lg overflow-hidden overflow-x-auto">
         {isPending ? (
           <TableSkeleton />
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No captures found</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            {hasActiveFilters ? "No captures match your filters" : "No captures yet"}
+          </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="pl-3 sm:pl-4">Capture</TableHead>
                 <TableHead>User</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Phones</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Duration</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-8" />
+                <TableHead className="pr-3 sm:pr-4 w-8" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((capture, i) => {
+                const isThemed = !!capture.themeSampleId;
                 const ds = capture.status === "completed"
-                  ? (capture as any).verified === true ? "verified"
-                  : (capture as any).verified === false ? "pending_review"
+                  ? capture.verified === true ? "verified"
+                  : capture.verified === false ? "pending_review"
                   : "completed"
                   : capture.status;
                 const cfg = statusConfig[ds] ?? statusConfig.created;
+                const dur = formatDuration(capture.durationSeconds);
+
                 return (
                   <TableRow
                     key={capture.id}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => router.push(`/capture/${capture.id}`)}
-                    style={{ animation: `fade-in-up 0.3s ease-out backwards`, animationDelay: `${i * 20}ms` }}
+                    className="cursor-pointer group/row hover:bg-muted/40 transition-colors"
+                    onClick={() => navigateToCapture(capture, router)}
+                    style={{ animation: `fade-in-up 0.3s ease-out backwards`, animationDelay: `${Math.min(i, 15) * 20}ms` }}
                   >
+                    {/* Capture: icon + type + phones */}
+                    <TableCell className="pl-3 sm:pl-4">
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 flex items-center justify-center size-8 rounded-lg shrink-0 ${
+                          isThemed ? "bg-emerald-500/10 text-emerald-500" : "bg-blue-500/10 text-blue-500"
+                        }`}>
+                          {isThemed ? <Target className="size-4" /> : <Phone className="size-4" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              {isThemed ? "Themed" : "General"}
+                            </span>
+                            {isThemed && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Theme</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
+                            {capture.phoneA} <span className="text-muted-foreground/40">&rarr;</span> {capture.phoneB}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    {/* User (last 4 of phone) */}
                     <TableCell className="text-xs text-muted-foreground font-mono">
-                      {capture.phoneA?.slice(-4) ?? "—"}
+                      ...{capture.phoneA?.slice(-4) ?? "?"}
                     </TableCell>
-                    <TableCell className="font-medium max-w-[180px] truncate">
-                      {capture.name || "Untitled"}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground font-mono">
-                      {capture.phoneA} / {capture.phoneB}
-                    </TableCell>
+
+                    {/* Status */}
                     <TableCell>
-                      <Badge variant="outline" className={`text-[10px] ${cfg.className}`}>
-                        <span className={`mr-1 inline-block size-1.5 rounded-full ${cfg.dot}`} />
+                      <Badge variant="outline" className={`border-transparent ${cfg.className}`}>
+                        <span className={`mr-1.5 inline-block size-1.5 rounded-full ${cfg.dot}${cfg.pulse ? " animate-pulse" : ""}`} />
                         {cfg.label}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {formatDuration(capture.durationSeconds)}
+
+                    {/* Duration */}
+                    <TableCell className="font-mono text-sm tabular-nums">
+                      {dur ?? <span className="text-muted-foreground/40">&mdash;</span>}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+
+                    {/* Created */}
+                    <TableCell className="text-sm text-muted-foreground" suppressHydrationWarning>
                       {timeAgo(capture.createdAt)}
                     </TableCell>
-                    <TableCell>
-                      <ChevronRight className="size-4 text-muted-foreground" />
+
+                    {/* Chevron */}
+                    <TableCell className="pr-3 sm:pr-4">
+                      <ChevronRight className="size-4 text-muted-foreground/40 ml-auto group-hover/row:text-muted-foreground group-hover/row:translate-x-0.5 transition-all" />
                     </TableCell>
                   </TableRow>
                 );

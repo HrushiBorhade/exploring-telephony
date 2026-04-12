@@ -10,6 +10,7 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
+import { AdminCaptureBanner } from "@/components/admin-capture-banner";
 import { useState, useMemo, useCallback, memo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
@@ -493,6 +494,9 @@ export default function CaptureDetailPage() {
 
   return (
     <>
+      {/* Admin viewing another user's capture */}
+      <AdminCaptureBanner captureUserId={capture.userId} capturePhoneA={capture.phoneA} />
+
       {/* ── Action bar ─────────────────────────────── */}
       <motion.div
         className="flex items-center justify-between px-4 lg:px-6 py-3 border-b gap-2"
