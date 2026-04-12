@@ -32,8 +32,13 @@ import { useProfile } from "@/lib/api";
 
 const navMain = [
   {
-    title: "Captures",
-    url: "/capture",
+    title: "Home",
+    url: "/dashboard",
+    icon: <LayoutDashboardIcon />,
+  },
+  {
+    title: "Tasks",
+    url: "/dashboard/tasks",
     icon: <PhoneCallIcon />,
   },
 ];
@@ -59,7 +64,7 @@ const navAdmin = [
 const navSecondary = [
   {
     title: "Settings",
-    url: "/settings",
+    url: "/dashboard/settings",
     icon: <SettingsIcon />,
   },
 ];
@@ -90,7 +95,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             >
               <SidebarMenuButton
                 className="data-[slot=sidebar-menu-button]:p-1.5!"
-                render={<a href="/capture" />}
+                render={<a href="/dashboard" />}
               >
                 <AudioWaveformIcon className="size-5!" />
                 <span className="text-base font-semibold font-heading">Annote ASR</span>
@@ -111,12 +116,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 size="sm"
                 className="w-full gap-1.5"
                 onClick={() => {
-                  router.push("/capture");
-                  window.dispatchEvent(new CustomEvent("open-new-capture"));
+                  router.push("/dashboard");
                 }}
               >
                 <PlusIcon className="size-4" />
-                New Capture
+                New Task
               </Button>
             </SidebarGroup>
           </motion.div>

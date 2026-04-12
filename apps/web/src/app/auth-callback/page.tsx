@@ -15,7 +15,7 @@ export default function AuthCallbackPage() {
       return;
     }
     if (isLoading || !profile) return;
-    router.replace(profile.onboardingCompleted ? "/capture" : "/onboarding");
+    router.replace(profile.onboardingCompleted ? "/dashboard" : "/onboarding");
   }, [isLoading, isError, profile, router]);
 
   return (
