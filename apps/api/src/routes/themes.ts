@@ -48,25 +48,49 @@ router.post("/api/captures/themed", requireAuth, async (req: AuthRequest, res) =
       return;
     }
 
+    // 1. Create capture in DB FIRST (so FK reference is valid for theme_samples.assigned_capture_id)
     const id = crypto.randomBytes(6).toString("hex");
+    const roomName = `capture-${id}`;
+
+    await dbq.createCapture({
+      id,
+      userId: req.userId!,
+      name: "",
+      phoneA: req.userPhone,
+      phoneB,
+      language: "multi",
+      status: "created",
+      roomName,
+    });
+
+    // 2. Assign theme sample (now the capture ID exists for the FK)
     const sample = await dbq.assignThemeSample(id, sampleLanguages) as {
       id: number; category: string; language: string; data: string;
       status: string; public_token: string;
     } | null;
 
     if (!sample) {
+      // No samples available — delete the capture we just created
+      await dbq.updateCapture(id, { status: "failed" });
       res.status(409).json({ error: "No theme samples available for your languages" });
       return;
     }
 
-    const roomName = `capture-${id}`;
+    // 3. Update capture with theme sample info
+    const lang = sample.language === "hindi" ? "hi" : sample.language === "telugu" ? "te" : "multi";
+    await dbq.updateCapture(id, {
+      themeSampleId: sample.id,
+      language: lang,
+      name: `Theme: ${sample.category}`,
+    });
+
     const capture: Capture = {
       id,
       userId: req.userId!,
       name: `Theme: ${sample.category}`,
       phoneA: req.userPhone,
       phoneB,
-      language: sample.language as string,
+      language: lang,
       status: "created",
       roomName,
       themeSampleId: sample.id,
@@ -74,25 +98,6 @@ router.post("/api/captures/themed", requireAuth, async (req: AuthRequest, res) =
     };
 
     activeCaptures.set(id, capture);
-
-    try {
-      await dbq.createCapture({
-        id,
-        userId: req.userId!,
-        name: capture.name,
-        phoneA: capture.phoneA,
-        phoneB: capture.phoneB,
-        language: capture.language,
-        status: "created",
-        roomName,
-        themeSampleId: sample.id,
-      });
-    } catch (err) {
-      await dbq.releaseThemeSample(id);
-      activeCaptures.delete(id);
-      throw err;
-    }
-
     captureTotal.inc();
     logger.info(`[CAPTURE] Created themed capture: ${id} (${sample.category}/${sample.language})`);
 
