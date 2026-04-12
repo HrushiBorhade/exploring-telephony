@@ -89,7 +89,7 @@ export const captures = pgTable("captures_v2", {
   transcriptB: text("transcript_b"),
   datasetCsvUrl: text("dataset_csv_url"),
   verified: boolean("verified"),
-  themeSampleId: integer("theme_sample_id").references(() => themeSamples.id, { onDelete: "set null" }),
+  themeSampleId: integer("theme_sample_id"), // FK to theme_samples.id enforced in migration SQL (avoids circular ref with Drizzle)
   durationSeconds: integer("duration_seconds"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp("started_at", { withTimezone: true }),
