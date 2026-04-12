@@ -14,10 +14,6 @@ export async function getCapture(id: string) {
   return db.query.captures.findFirst({ where: eq(schema.captures.id, id) });
 }
 
-export async function listCaptures() {
-  return db.query.captures.findMany({ orderBy: (t, { desc }) => [desc(t.createdAt)] });
-}
-
 export async function findCaptureByEgressId(egressId: string) {
   if (!egressId) return undefined;
   return db.query.captures.findFirst({ where: eq(schema.captures.egressId, egressId) });

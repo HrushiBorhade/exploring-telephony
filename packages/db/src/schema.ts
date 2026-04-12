@@ -85,7 +85,6 @@ export const captures = pgTable("captures_v2", {
   recordingUrl: text("recording_url"),
   recordingUrlA: text("recording_url_a"),
   recordingUrlB: text("recording_url_b"),
-  localRecordingPath: text("local_recording_path"),
   transcriptA: text("transcript_a"),
   transcriptB: text("transcript_b"),
   datasetCsvUrl: text("dataset_csv_url"),

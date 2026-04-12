@@ -19,7 +19,8 @@
     "csv-stringify": "*",
     "dotenv": "*",
     "pino": "*",
-    "pino-pretty": "*"
+    "pino-pretty": "*",
+    "zod": "*"
   },
   "devDependencies": {
     "@types/node": "*",

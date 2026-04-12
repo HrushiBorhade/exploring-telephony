@@ -1,24 +1,13 @@
 import { Router } from "express";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import * as dbq from "@repo/db";
 import { logger } from "../logger";
 import { env } from "../env";
+import { s3 } from "../lib/s3-client";
 import type { Readable } from "stream";
 
-const { S3_BUCKET, S3_REGION, S3_ENDPOINT } = env;
-
-const s3 = new S3Client({
-  region: S3_REGION,
-  ...(S3_ENDPOINT && {
-    endpoint: S3_ENDPOINT,
-    forcePathStyle: true,
-  }),
-  credentials: {
-    accessKeyId: env.S3_ACCESS_KEY!,
-    secretAccessKey: env.S3_SECRET_KEY!,
-  },
-});
+const { S3_BUCKET } = env;
 
 const router = Router();
 

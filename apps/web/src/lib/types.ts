@@ -46,7 +46,6 @@ export interface Capture {
   recordingUrl?: string;
   recordingUrlA?: string;
   recordingUrlB?: string;
-  localRecordingPath?: string;
   transcriptA?: string | null;
   transcriptB?: string | null;
   datasetCsvUrl?: string | null;

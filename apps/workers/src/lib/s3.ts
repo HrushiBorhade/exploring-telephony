@@ -1,8 +1,7 @@
 import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { env } from "../env";
 
-const S3_BUCKET = process.env.S3_BUCKET!;
-const S3_REGION = process.env.S3_REGION || "ap-south-1";
-const S3_ENDPOINT = process.env.S3_ENDPOINT;
+const { S3_BUCKET, S3_REGION, S3_ENDPOINT } = env;
 
 const s3 = new S3Client({
   region: S3_REGION,
@@ -11,13 +10,13 @@ const s3 = new S3Client({
     forcePathStyle: true,
   }),
   credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY!,
-    secretAccessKey: process.env.S3_SECRET_KEY!,
+    accessKeyId: env.S3_ACCESS_KEY,
+    secretAccessKey: env.S3_SECRET_KEY,
   },
 });
 
 function getPublicBaseUrl(): string {
-  if (process.env.S3_PUBLIC_URL) return process.env.S3_PUBLIC_URL;
+  if (env.S3_PUBLIC_URL) return env.S3_PUBLIC_URL;
   if (S3_ENDPOINT) return `${S3_ENDPOINT}/${S3_BUCKET}`;
   return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
 }

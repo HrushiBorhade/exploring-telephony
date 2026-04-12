@@ -6,7 +6,14 @@ import { logger } from "../logger";
 import { transcribeWithDeepgram } from "./deepgram";
 import { splitIntoChunks } from "./ffmpeg";
 
-const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+let _genai: GoogleGenAI | undefined;
+function getGenAI(): GoogleGenAI {
+  if (!_genai) {
+    const { env } = require("../env");
+    _genai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+  }
+  return _genai;
+}
 
 export interface Segment {
   startSeconds: number;
@@ -156,9 +163,12 @@ async function _transcribeSingle(
     const msg = err.message || "";
     const isOverloaded = msg.includes("503") || msg.includes("429") || msg.includes("UNAVAILABLE") || msg.includes("RESOURCE_EXHAUSTED");
 
-    if (isOverloaded && process.env.DEEPGRAM_API_KEY) {
-      logger.warn("[GEMINI] Chunk unavailable, falling back to Deepgram");
-      return transcribeWithDeepgram(audioBuffer, mimeType);
+    if (isOverloaded) {
+      const { env } = require("../env");
+      if (env.DEEPGRAM_API_KEY) {
+        logger.warn("[GEMINI] Chunk unavailable, falling back to Deepgram");
+        return transcribeWithDeepgram(audioBuffer, mimeType);
+      }
     }
 
     throw err;
@@ -172,7 +182,7 @@ async function _transcribeGemini(
 ): Promise<TranscriptionResult> {
   logger.info({ sizeKB: (audioBuffer.length / 1024).toFixed(1), mimeType }, "[GEMINI] Starting transcription");
 
-  const response = await genai.models.generateContent({
+  const response = await getGenAI().models.generateContent({
     model: "gemini-3.1-pro-preview",
     contents: {
       parts: [

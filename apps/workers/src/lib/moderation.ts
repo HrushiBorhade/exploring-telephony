@@ -1,7 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { logger } from "../logger";
 
-const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+let _genai: GoogleGenAI | undefined;
+function getGenAI(): GoogleGenAI {
+  if (!_genai) {
+    const { env } = require("../env");
+    _genai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+  }
+  return _genai;
+}
 
 export interface ModerationFlag {
   type: "pii" | "abuse" | "confidential";
@@ -86,7 +93,7 @@ ${formatUtterances(utterancesA, "a")}
 Participant B:
 ${formatUtterances(utterancesB, "b")}`;
 
-    const response = await genai.models.generateContent({
+    const response = await getGenAI().models.generateContent({
       model: "gemini-3.1-pro-preview",
       contents: { parts: [{ text: prompt }] },
       config: {
