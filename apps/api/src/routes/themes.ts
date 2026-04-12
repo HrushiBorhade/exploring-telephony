@@ -6,6 +6,7 @@ import { logger } from "../logger";
 import { activeCaptures } from "../services/state";
 import { captureTotal } from "../metrics";
 import type { Capture } from "@repo/types";
+import { sendThemeWhatsApp } from "../lib/whatsapp";
 
 const router = Router();
 
@@ -100,6 +101,18 @@ router.post("/api/captures/themed", requireAuth, async (req: AuthRequest, res) =
     activeCaptures.set(id, capture);
     captureTotal.inc();
     logger.info(`[CAPTURE] Created themed capture: ${id} (${sample.category}/${sample.language})`);
+
+    // Build public link for participant B
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const publicLink = `${frontendUrl}/t/${sample.public_token}`;
+
+    // Fire-and-forget WhatsApp to participant B — don't block the response
+    sendThemeWhatsApp({
+      phone: phoneB,
+      publicLink,
+      category: sample.category,
+      language: sample.language,
+    }).catch((err) => logger.error({ captureId: id, error: err.message }, "[THEME] WhatsApp send failed (non-blocking)"));
 
     res.json({
       capture,
@@ -229,9 +242,24 @@ router.post("/api/captures/:id/whatsapp/resend", requireAuth, async (req: AuthRe
       res.status(403).json({ error: "Forbidden" }); return;
     }
 
-    // TODO: Implement actual AuthKey WhatsApp API call to resend theme data
-    logger.info({ captureId: id }, "[THEME] WhatsApp resend requested");
-    res.json({ ok: true });
+    const sample = await dbq.getThemeSampleByCaptureId(id);
+    if (!sample || !sample.publicToken) {
+      res.status(404).json({ error: "No theme sample for this capture" });
+      return;
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const publicLink = `${frontendUrl}/t/${sample.publicToken}`;
+
+    const result = await sendThemeWhatsApp({
+      phone: capture.phoneB,
+      publicLink,
+      category: sample.category,
+      language: sample.language,
+    });
+
+    logger.info({ captureId: id, sent: result.sent, method: result.method }, "[THEME] WhatsApp resend");
+    res.json({ ok: true, sent: result.sent, method: result.method });
   } catch {
     res.status(500).json({ error: "Failed to resend WhatsApp message" });
   }
