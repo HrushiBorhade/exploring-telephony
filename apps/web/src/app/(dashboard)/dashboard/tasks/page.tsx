@@ -11,6 +11,9 @@ import {
   AlertCircle,
   Phone,
   Target,
+  Clock,
+  Filter,
+  ListFilter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +43,7 @@ const statusConfig: Record<
   { label: string; className: string; dot: string; pulse?: boolean }
 > = {
   created: {
-    label: "Created",
+    label: "Ready",
     className: "bg-muted text-muted-foreground",
     dot: "bg-muted-foreground",
   },
@@ -83,7 +86,7 @@ const statusConfig: Record<
 // ── Helpers ─────────────────────────────────────────────────────────
 
 function formatDuration(seconds?: number | null) {
-  if (seconds == null) return "\u2014";
+  if (seconds == null || seconds === 0) return null;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
@@ -107,40 +110,40 @@ function navigateToCapture(c: Capture, router: ReturnType<typeof useRouter>) {
 
 // ── Skeleton rows ───────────────────────────────────────────────────
 
-const skeletonWidths = [
-  { type: "w-16", phones: "w-40", status: "w-20", dur: "w-10", time: "w-14" },
-  { type: "w-14", phones: "w-44", status: "w-18", dur: "w-8", time: "w-16" },
-  { type: "w-16", phones: "w-36", status: "w-22", dur: "w-10", time: "w-12" },
-];
-
 function SkeletonRows({ count = 3 }: { count?: number }) {
+  const widths = ["w-28", "w-32", "w-24"];
   return (
     <>
-      {Array.from({ length: count }).map((_, i) => {
-        const w = skeletonWidths[i % skeletonWidths.length];
-        return (
-          <TableRow key={`skeleton-${i}`}>
-            <TableCell className="pl-6">
-              <Skeleton className={`h-5 ${w.type} rounded-full`} />
-            </TableCell>
-            <TableCell>
-              <Skeleton className={`h-4 ${w.phones}`} />
-            </TableCell>
-            <TableCell>
-              <Skeleton className={`h-5 ${w.status} rounded-full`} />
-            </TableCell>
-            <TableCell>
-              <Skeleton className={`h-4 ${w.dur}`} />
-            </TableCell>
-            <TableCell>
-              <Skeleton className={`h-4 ${w.time}`} />
-            </TableCell>
-            <TableCell className="pr-6">
-              <Skeleton className="h-4 w-4 ml-auto" />
-            </TableCell>
-          </TableRow>
-        );
-      })}
+      {Array.from({ length: count }).map((_, i) => (
+        <TableRow key={`skeleton-${i}`}>
+          {/* Capture: icon + title + phone */}
+          <TableCell className="pl-3 sm:pl-6">
+            <div className="flex items-start gap-3">
+              <Skeleton className="size-8 rounded-lg shrink-0" />
+              <div className="space-y-1.5">
+                <Skeleton className={`h-4 ${widths[i % widths.length]}`} />
+                <Skeleton className="h-3 w-36" />
+              </div>
+            </div>
+          </TableCell>
+          {/* Status badge */}
+          <TableCell>
+            <Skeleton className="h-5 w-20 rounded-full" />
+          </TableCell>
+          {/* Duration */}
+          <TableCell>
+            <Skeleton className="h-4 w-10" />
+          </TableCell>
+          {/* When */}
+          <TableCell>
+            <Skeleton className="h-4 w-14" />
+          </TableCell>
+          {/* Chevron */}
+          <TableCell className="pr-3 sm:pr-6">
+            <Skeleton className="h-4 w-4 ml-auto rounded" />
+          </TableCell>
+        </TableRow>
+      ))}
     </>
   );
 }
@@ -150,12 +153,11 @@ function TableSkeleton() {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="pl-6">Type</TableHead>
-          <TableHead>Phones</TableHead>
+          <TableHead className="pl-3 sm:pl-6">Capture</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Duration</TableHead>
-          <TableHead>Created</TableHead>
-          <TableHead className="pr-6" />
+          <TableHead>When</TableHead>
+          <TableHead className="pr-3 sm:pr-6" />
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -214,7 +216,6 @@ export default function TasksPage() {
 
     if (statusFilter !== "all") {
       if (statusFilter === "active") {
-        // "Active" groups calling + active statuses
         filtered = filtered.filter(
           (c) => c.status === "calling" || c.status === "active",
         );
@@ -283,19 +284,31 @@ export default function TasksPage() {
           {/* ── Filter bar ── */}
           <motion.div
             variants={pageFadeUp}
-            className="flex items-center gap-3 mb-4"
+            className="flex flex-wrap items-center gap-2 sm:gap-3 mb-4"
           >
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <ListFilter className="size-3.5" />
+              <span className="hidden sm:inline">Filter:</span>
+            </div>
             <Select
               value={typeFilter}
               onValueChange={(v) => setTypeFilter(v as TypeFilter)}
             >
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[120px] sm:w-[140px] h-8 text-xs">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="general">General</SelectItem>
-                <SelectItem value="themed">Themed</SelectItem>
+                <SelectItem value="general">
+                  <span className="flex items-center gap-1.5">
+                    <Phone className="size-3" /> General
+                  </span>
+                </SelectItem>
+                <SelectItem value="themed">
+                  <span className="flex items-center gap-1.5">
+                    <Target className="size-3" /> Themed
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
 
@@ -303,7 +316,7 @@ export default function TasksPage() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as StatusFilter)}
             >
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-[130px] sm:w-[160px] h-8 text-xs">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -320,13 +333,13 @@ export default function TasksPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-muted-foreground"
+                className="text-muted-foreground h-8 text-xs"
                 onClick={() => {
                   setTypeFilter("all");
                   setStatusFilter("all");
                 }}
               >
-                Clear filters
+                Clear
               </Button>
             )}
           </motion.div>
@@ -334,14 +347,12 @@ export default function TasksPage() {
           {/* ── Table ── */}
           <motion.div
             variants={pageFadeUp}
-            className="rounded-lg border border-border overflow-hidden"
+            className="rounded-lg border border-border overflow-hidden overflow-x-auto"
           >
-            {/* Initial loading */}
             {isPending ? (
               <TableSkeleton />
-            ) : /* Initial error */
-            isError && allCaptures.length === 0 ? (
-              <div className="py-12 text-center space-y-3 px-6">
+            ) : isError && allCaptures.length === 0 ? (
+              <div className="py-8 sm:py-12 text-center space-y-3 px-3 sm:px-6">
                 <AlertCircle className="size-8 mx-auto text-muted-foreground/40" />
                 <p className="font-medium">Failed to load tasks</p>
                 <p className="text-sm text-muted-foreground">
@@ -355,9 +366,8 @@ export default function TasksPage() {
                   Try again
                 </Button>
               </div>
-            ) : /* Empty state — no captures at all */
-            allCaptures.length === 0 ? (
-              <div className="py-20 text-center px-6">
+            ) : allCaptures.length === 0 ? (
+              <div className="py-12 sm:py-20 text-center px-3 sm:px-6">
                 <div className="inline-flex items-center justify-center size-12 rounded-xl bg-muted/50 mb-4">
                   <AudioWaveform className="size-5 text-muted-foreground/50" />
                 </div>
@@ -366,11 +376,10 @@ export default function TasksPage() {
                   Go to the home page and start a new capture to see it here.
                 </p>
               </div>
-            ) : /* Filters matched nothing */
-            captures.length === 0 && hasActiveFilters ? (
-              <div className="py-16 text-center px-6">
+            ) : captures.length === 0 && hasActiveFilters ? (
+              <div className="py-10 sm:py-16 text-center px-3 sm:px-6">
                 <div className="inline-flex items-center justify-center size-12 rounded-xl bg-muted/50 mb-4">
-                  <AudioWaveform className="size-5 text-muted-foreground/50" />
+                  <Filter className="size-5 text-muted-foreground/50" />
                 </div>
                 <p className="font-medium text-sm">No matching captures</p>
                 <p className="text-sm text-muted-foreground mt-1">
@@ -389,16 +398,14 @@ export default function TasksPage() {
                 </Button>
               </div>
             ) : (
-              /* Data table */
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="pl-6">Type</TableHead>
-                    <TableHead>Phones</TableHead>
+                    <TableHead className="pl-3 sm:pl-6">Capture</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Duration</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="pr-6" />
+                    <TableHead>When</TableHead>
+                    <TableHead className="pr-3 sm:pr-6" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -409,6 +416,7 @@ export default function TasksPage() {
                     const sc = callFailed
                       ? statusConfig.failed
                       : (statusConfig[c.status] ?? statusConfig.created);
+                    const dur = formatDuration(c.durationSeconds);
 
                     return (
                       <TableRow
@@ -426,31 +434,40 @@ export default function TasksPage() {
                           animationDelay: `${Math.min(i, 10) * 40}ms`,
                         }}
                       >
-                        {/* Type badge */}
-                        <TableCell className="pl-6">
-                          {isThemed ? (
-                            <Badge
-                              variant="secondary"
-                              className="gap-1"
-                            >
-                              <Target className="size-3" />
-                              Themed
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="gap-1">
-                              <Phone className="size-3" />
-                              General
-                            </Badge>
-                          )}
-                        </TableCell>
-
-                        {/* Phones */}
-                        <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
-                          {c.phoneA}{" "}
-                          <span className="text-muted-foreground/40">
-                            &rarr;
-                          </span>{" "}
-                          {c.phoneB}
+                        {/* Capture info — type + phones combined */}
+                        <TableCell className="pl-3 sm:pl-6">
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex items-center justify-center size-8 rounded-lg shrink-0 ${
+                              isThemed
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : "bg-blue-500/10 text-blue-500"
+                            }`}>
+                              {isThemed ? (
+                                <Target className="size-4" />
+                              ) : (
+                                <Phone className="size-4" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">
+                                  {isThemed ? "Themed Capture" : "General Capture"}
+                                </span>
+                                {isThemed && (
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                    Theme
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate">
+                                {c.phoneA}{" "}
+                                <span className="text-muted-foreground/40">
+                                  &rarr;
+                                </span>{" "}
+                                {c.phoneB}
+                              </p>
+                            </div>
+                          </div>
                         </TableCell>
 
                         {/* Status badge */}
@@ -467,8 +484,15 @@ export default function TasksPage() {
                         </TableCell>
 
                         {/* Duration */}
-                        <TableCell className="font-mono text-sm tabular-nums">
-                          {formatDuration(c.durationSeconds)}
+                        <TableCell>
+                          {dur ? (
+                            <span className="flex items-center gap-1.5 text-sm tabular-nums font-mono">
+                              <Clock className="size-3 text-muted-foreground/50" />
+                              {dur}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground/40">&mdash;</span>
+                          )}
                         </TableCell>
 
                         {/* Created */}
@@ -480,14 +504,13 @@ export default function TasksPage() {
                         </TableCell>
 
                         {/* Chevron */}
-                        <TableCell className="pr-6">
+                        <TableCell className="pr-3 sm:pr-6">
                           <ChevronRight className="h-4 w-4 text-muted-foreground/40 ml-auto transition-all group-hover/row:text-muted-foreground group-hover/row:translate-x-0.5" />
                         </TableCell>
                       </TableRow>
                     );
                   })}
 
-                  {/* Loading next page skeleton rows */}
                   {isFetchingNextPage && <SkeletonRows count={2} />}
                 </TableBody>
               </Table>
@@ -497,7 +520,6 @@ export default function TasksPage() {
           {/* ── Infinite scroll sentinel + states ── */}
           {allCaptures.length > 0 && (
             <div className="pt-3 pb-1">
-              {/* Error loading next page */}
               {isError && allCaptures.length > 0 && !isFetchingNextPage && (
                 <div className="flex items-center justify-center gap-2 py-2">
                   <AlertCircle className="size-3.5 text-destructive" />
@@ -514,12 +536,10 @@ export default function TasksPage() {
                 </div>
               )}
 
-              {/* Sentinel for auto-load */}
               {hasNextPage && !isError && (
                 <div ref={sentinelRef} className="h-1" />
               )}
 
-              {/* Loading indicator below table */}
               {isFetchingNextPage && (
                 <div className="flex items-center justify-center gap-2 py-2">
                   <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" />
@@ -529,7 +549,6 @@ export default function TasksPage() {
                 </div>
               )}
 
-              {/* End of list */}
               {!hasNextPage && !isPending && allCaptures.length > 0 && (
                 <p className="text-center text-xs text-muted-foreground/50 py-1">
                   All {allCaptures.length} captures loaded

@@ -11,6 +11,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -75,10 +76,46 @@ export default function PublicThemePage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4">
-        <div className="flex flex-col items-center gap-3 text-muted-foreground">
-          <LoaderCircle className="size-8 animate-spin" />
-          <p className="text-sm">Loading task details...</p>
+      <div className="flex min-h-screen flex-col bg-background px-3 sm:px-4 py-6 sm:py-8">
+        <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-6">
+          {/* Header skeleton */}
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-7 w-64" />
+            <div className="flex gap-2">
+              <Skeleton className="h-5 w-20 rounded-full" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          </div>
+
+          {/* Instructions card skeleton */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-3 w-full mt-2" />
+              <Skeleton className="h-3 w-3/4 mt-1" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Skeleton className="h-3 w-5/6" />
+              <Skeleton className="h-3 w-4/6" />
+              <Skeleton className="h-3 w-3/6" />
+            </CardContent>
+          </Card>
+
+          {/* Values card skeleton */}
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-3 w-48 mt-1" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="space-y-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -116,11 +153,11 @@ export default function PublicThemePage() {
   const fieldEntries = Object.entries(data.data);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background px-4 py-8">
-      <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+    <div className="flex min-h-screen flex-col bg-background px-3 sm:px-4 py-6 sm:py-8">
+      <div className="mx-auto flex w-full max-w-lg flex-col gap-4 sm:gap-6">
         {/* Header */}
         <div className="flex flex-col gap-3">
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+          <h1 className="font-heading text-xl sm:text-2xl font-semibold tracking-tight">
             Voice Data Collection Task
           </h1>
           <div className="flex flex-wrap items-center gap-2">
@@ -142,7 +179,7 @@ export default function PublicThemePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="list-inside list-disc space-y-1.5 text-sm text-muted-foreground">
+            <ul className="list-inside list-disc space-y-1 sm:space-y-1.5 text-xs sm:text-sm text-muted-foreground">
               <li>Read each value clearly and at a natural pace</li>
               <li>Wait for Participant A to confirm before moving on</li>
               <li>If asked, spell out or repeat any value</li>
@@ -173,7 +210,7 @@ export default function PublicThemePage() {
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                       {formatFieldLabel(key)}
                     </span>
-                    <span className="text-base font-medium break-all">
+                    <span className="text-sm sm:text-base font-medium break-all">
                       {value}
                     </span>
                   </div>

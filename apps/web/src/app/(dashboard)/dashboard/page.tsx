@@ -91,24 +91,22 @@ export default function DashboardHome() {
             Start a New Capture
           </motion.h2>
 
-          <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4 @xl/main:grid-cols-2 items-stretch">
             {/* General Capture card */}
-            <motion.div variants={pageFadeUp}>
-              <Card className="relative bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-foreground/20">
+            <motion.div variants={pageFadeUp} className="flex">
+              <Card className="flex flex-col flex-1 bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-foreground/20">
                 <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center size-9 rounded-lg bg-primary/10">
-                      <Phone className="size-4 text-primary" />
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-blue-500/10">
+                      <Phone className="size-4 text-blue-600 dark:text-blue-400" />
                     </div>
-                    <div>
-                      <CardTitle>General Capture</CardTitle>
-                    </div>
+                    <CardTitle>General Capture</CardTitle>
                   </div>
                   <CardDescription className="mt-2">
                     Bridge two phone numbers and record a free-form conversation in any language.
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="mt-auto">
                   <Button
                     className="w-full"
                     onClick={() => openDialog("general")}
@@ -120,34 +118,32 @@ export default function DashboardHome() {
             </motion.div>
 
             {/* Special Theme Capture card */}
-            <motion.div variants={pageFadeUp}>
-              <Card className="relative bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-foreground/20">
+            <motion.div variants={pageFadeUp} className="flex">
+              <Card className="flex flex-col flex-1 bg-gradient-to-t from-primary/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-1 hover:ring-foreground/20">
                 <CardHeader>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-500/10">
                       <Target className="size-4 text-emerald-600 dark:text-emerald-400" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <CardTitle>Special Theme Capture</CardTitle>
-                      <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                        New
-                      </Badge>
-                    </div>
+                    <CardTitle>Special Theme Capture</CardTitle>
+                    <Badge variant="default" className="text-[10px] px-1.5 py-0 ml-auto">
+                      New
+                    </Badge>
                   </div>
                   <CardDescription className="mt-2">
                     Record a guided conversation using a themed prompt with form validation.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="mt-auto space-y-3">
                   {themeAvailability && themeAvailability.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {themeAvailability.map((lang) => (
                         <Badge
                           key={lang.language}
                           variant="outline"
-                          className="text-xs gap-1 text-muted-foreground border-border"
+                          className="text-xs gap-1 text-muted-foreground border-border capitalize"
                         >
-                          {lang.language}
+                          {lang.language}:
                           <span className="font-mono tabular-nums">
                             {lang.available}/{lang.total}
                           </span>

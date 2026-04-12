@@ -115,15 +115,57 @@ const stagger = pageStagger;
 
 function DetailSkeleton() {
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-8 w-8 rounded" />
-        <Skeleton className="h-5 w-48" />
-        <Skeleton className="ml-auto h-6 w-24 rounded-full" />
+    <div className="flex flex-1 flex-col">
+      {/* Header bar skeleton */}
+      <div className="flex items-center gap-3 border-b px-3 sm:px-4 lg:px-6 py-2 sm:py-3">
+        <Skeleton className="size-8 rounded" />
+        <Skeleton className="h-4 w-32" />
+        <div className="ml-auto flex gap-2">
+          <Skeleton className="h-5 w-16 rounded-full" />
+          <Skeleton className="h-5 w-14 rounded-full" />
+        </div>
       </div>
-      <Skeleton className="h-40 w-full max-w-2xl rounded-xl" />
-      <Skeleton className="h-32 w-full max-w-2xl rounded-xl" />
-      <Skeleton className="h-64 w-full max-w-2xl rounded-xl" />
+
+      <div className="flex-1 p-2 sm:p-4 lg:p-6 space-y-4 max-w-2xl">
+        {/* Instructions card skeleton */}
+        <div className="rounded-xl border p-4 space-y-3">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-3/4" />
+          <Skeleton className="h-3 w-5/6" />
+        </div>
+
+        {/* Share section skeleton */}
+        <div className="rounded-xl border p-4 space-y-3">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-8 w-full rounded" />
+          <Skeleton className="h-8 w-24" />
+        </div>
+
+        {/* Checkboxes skeleton */}
+        <div className="rounded-xl border p-4 space-y-3">
+          <Skeleton className="h-4 w-32" />
+          <div className="flex items-center gap-2">
+            <Skeleton className="size-4 rounded" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="size-4 rounded" />
+            <Skeleton className="h-3 w-44" />
+          </div>
+        </div>
+
+        {/* Form fields skeleton */}
+        <div className="rounded-xl border p-4 space-y-4">
+          <Skeleton className="h-4 w-20" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-10 w-full rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -257,7 +299,7 @@ export default function ThemedCaptureDetail() {
     <div className="flex flex-1 flex-col overflow-y-auto">
       {/* ── Header bar ─────────────────────────────── */}
       <motion.div
-        className="flex items-center justify-between gap-2 border-b px-4 py-3 lg:px-6"
+        className="flex items-center justify-between gap-2 border-b px-3 sm:px-4 lg:px-6 py-2 sm:py-3"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: "easeOut" }}
@@ -297,7 +339,7 @@ export default function ThemedCaptureDetail() {
       </motion.div>
 
       {/* ── Body ───────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 lg:p-6">
         <motion.div
           className="mx-auto w-full max-w-2xl space-y-4"
           initial="hidden"
@@ -440,7 +482,7 @@ export default function ThemedCaptureDetail() {
                               {field}
                             </Label>
                             <Input
-                              placeholder="\u2014"
+                              placeholder="Fill during call"
                               disabled
                               className="bg-muted/30"
                             />
@@ -460,7 +502,7 @@ export default function ThemedCaptureDetail() {
                   size="lg"
                   onClick={handleStartCall}
                   disabled={!canStartCall || startMutation.isPending}
-                  className="min-w-[180px]"
+                  className="w-full sm:w-auto sm:min-w-[180px]"
                 >
                   {startMutation.isPending ? (
                     <>
@@ -523,7 +565,7 @@ export default function ThemedCaptureDetail() {
                     size="lg"
                     onClick={handleEndCall}
                     disabled={endMutation.isPending}
-                    className="min-w-[180px]"
+                    className="w-full sm:w-auto sm:min-w-[180px]"
                   >
                     {endMutation.isPending ? (
                       <>
