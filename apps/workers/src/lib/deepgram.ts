@@ -36,20 +36,21 @@ const PADDING = 0.05;              // 50ms padding before/after each utterance
  * Fixes: overlapping words, abnormally long words, low-confidence ghost detections.
  */
 function cleanWords(raw: DGWord[]): DGWord[] {
-  // Drop ghost detections
-  const filtered = raw.filter((w) => w.confidence >= MIN_WORD_CONFIDENCE);
+  // Drop ghost detections and words with broken durations
+  // A single word is never longer than MAX_WORD_DURATION — if Deepgram reports
+  // 19 seconds for "Hello", the timestamp is broken and we drop the word entirely
+  const filtered = raw.filter((w) => {
+    if (w.confidence < MIN_WORD_CONFIDENCE) return false;
+    if (w.end - w.start > MAX_WORD_DURATION) return false;
+    return true;
+  });
 
   // Sort by start time (should already be sorted, but defensive)
   filtered.sort((a, b) => a.start - b.start);
 
-  // Fix durations and overlaps
+  // Fix overlaps
   for (let i = 0; i < filtered.length; i++) {
     const w = filtered[i];
-
-    // Cap word duration
-    if (w.end - w.start > MAX_WORD_DURATION) {
-      w.end = w.start + MAX_WORD_DURATION;
-    }
 
     // Fix overlap: if this word starts before previous word ends, snap forward
     if (i > 0 && w.start < filtered[i - 1].end) {
