@@ -165,6 +165,7 @@ router.post("/livekit/webhook", async (req, res) => {
           endedAt: new Date(capture.endedAt),
           durationSeconds: capture.durationSeconds,
         }).catch((e) => logger.error("[DB] room_finished update failed:", e.message));
+        dbq.releaseThemeSample(capture.id).catch(() => {});
         logger.info(`[WEBHOOK] Capture ${capture.id} ended (room finished)`);
       }
     }

@@ -174,6 +174,7 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
       dbq.updateCapture(capture.id, {
         status: "ended", endedAt: new Date(), durationSeconds: capture.durationSeconds ?? 0,
       }).catch((e) => logger.error("[CAPTURE] DB sync failed:", e.message));
+      dbq.releaseThemeSample(capture.id).catch(() => {});
       roomService.deleteRoom(roomName).catch(() => {});
     }
   }, 150_000);
@@ -220,6 +221,7 @@ router.post("/api/captures/:id/start", requireAuth, async (req: AuthRequest, res
       await dbq.updateCapture(capture.id, {
         status: "ended", endedAt: new Date(), durationSeconds: capture.durationSeconds ?? 0,
       }).catch((e) => logger.error({ captureId: capture.id }, "[DB] update failed:", e.message));
+      dbq.releaseThemeSample(capture.id).catch(() => {});
       roomService.deleteRoom(roomName).catch(() => {});
     } finally {
       clearTimeout(bgDeadline);
