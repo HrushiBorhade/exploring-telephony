@@ -34,79 +34,10 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCaptures } from "@/lib/api";
+import { statusConfig, formatDuration, timeAgo, navigateToCapture } from "@/lib/capture-utils";
 import type { Capture } from "@/lib/types";
 
-// ── Status badge config ────────────────────────────────────────────
-
-const statusConfig: Record<
-  string,
-  { label: string; className: string; dot: string; pulse?: boolean }
-> = {
-  created: {
-    label: "Ready",
-    className: "bg-muted text-muted-foreground",
-    dot: "bg-muted-foreground",
-  },
-  calling: {
-    label: "Dialling",
-    className: "bg-amber-500/10 text-amber-500",
-    dot: "bg-amber-500",
-    pulse: true,
-  },
-  active: {
-    label: "Recording",
-    className: "bg-emerald-500/10 text-emerald-500",
-    dot: "bg-emerald-500",
-    pulse: true,
-  },
-  ended: {
-    label: "Uploading",
-    className: "bg-blue-500/10 text-blue-500",
-    dot: "bg-blue-500",
-    pulse: true,
-  },
-  processing: {
-    label: "Processing",
-    className: "bg-violet-500/10 text-violet-500",
-    dot: "bg-violet-500",
-    pulse: true,
-  },
-  failed: {
-    label: "Failed",
-    className: "bg-destructive/10 text-destructive",
-    dot: "bg-destructive",
-  },
-  completed: {
-    label: "Completed",
-    className: "bg-emerald-500/10 text-emerald-500",
-    dot: "bg-emerald-500",
-  },
-};
-
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function formatDuration(seconds?: number | null) {
-  if (seconds == null || seconds === 0) return null;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function timeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
-
-function navigateToCapture(c: Capture, router: ReturnType<typeof useRouter>) {
-  const base = `/dashboard/tasks/${c.id}`;
-  router.push(c.themeSampleId ? `${base}/themed` : base);
-}
+// navigateToCapture imported from @/lib/capture-utils
 
 // ── Skeleton rows ───────────────────────────────────────────────────
 
@@ -424,10 +355,10 @@ export default function TasksPage() {
                         className="cursor-pointer group/row transition-colors hover:bg-muted/40"
                         tabIndex={0}
                         role="link"
-                        onClick={() => navigateToCapture(c, router)}
+                        onClick={() => navigateToCapture(c, router.push)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ")
-                            navigateToCapture(c, router);
+                            navigateToCapture(c, router.push);
                         }}
                         style={{
                           animation: "fade-in-up 0.3s ease-out backwards",

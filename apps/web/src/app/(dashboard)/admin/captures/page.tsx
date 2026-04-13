@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight, Search, Phone, Target, ListFilter } from "lucide-react";
+import { ChevronRight, Search, Phone, Target } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { Badge } from "@/components/ui/badge";
@@ -13,37 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useAdminCaptures } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
-import type { Capture } from "@/lib/types";
-
-const statusConfig: Record<string, { label: string; className: string; dot: string; pulse?: boolean }> = {
-  created:         { label: "Created",        className: "bg-muted text-muted-foreground",       dot: "bg-muted-foreground" },
-  calling:         { label: "Dialling",       className: "bg-amber-500/10 text-amber-500",       dot: "bg-amber-500", pulse: true },
-  active:          { label: "Recording",      className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500", pulse: true },
-  ended:           { label: "Uploading",      className: "bg-blue-500/10 text-blue-500",         dot: "bg-blue-500", pulse: true },
-  processing:      { label: "Processing",     className: "bg-violet-500/10 text-violet-500",     dot: "bg-violet-500", pulse: true },
-  failed:          { label: "Failed",         className: "bg-destructive/10 text-destructive",   dot: "bg-destructive" },
-  completed:       { label: "Completed",      className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500" },
-  pending_review:  { label: "Pending Review", className: "bg-amber-500/10 text-amber-500",       dot: "bg-amber-500" },
-  verified:        { label: "Verified",       className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500" },
-};
-
-function formatDuration(s?: number | null) {
-  if (s == null || s === 0) return null;
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
-
-function timeAgo(date: string) {
-  const diff = Date.now() - new Date(date).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
+import { statusConfig, formatDuration, timeAgo, getDisplayStatus, navigateToCapture } from "@/lib/capture-utils";
 
 function TableSkeleton() {
   return (
@@ -65,10 +35,7 @@ function TableSkeleton() {
   );
 }
 
-function navigateToCapture(c: Capture, router: ReturnType<typeof useRouter>) {
-  const base = `/dashboard/tasks/${c.id}`;
-  router.push(c.themeSampleId ? `${base}/themed` : base);
-}
+// navigateToCapture, getDisplayStatus imported from @/lib/capture-utils
 
 export default function AdminCapturesPage() {
   const router = useRouter();
@@ -108,11 +75,7 @@ export default function AdminCapturesPage() {
     // Status filter (with verified/pending_review derivation)
     if (statusFilter !== "all") {
       list = list.filter((c) => {
-        const ds = c.status === "completed"
-          ? c.verified === true ? "verified"
-          : c.verified === false ? "pending_review"
-          : "completed"
-          : c.status;
+        const ds = getDisplayStatus(c);
         return ds === statusFilter;
       });
     }
@@ -226,11 +189,7 @@ export default function AdminCapturesPage() {
             <TableBody>
               {filtered.map((capture, i) => {
                 const isThemed = !!capture.themeSampleId;
-                const ds = capture.status === "completed"
-                  ? capture.verified === true ? "verified"
-                  : capture.verified === false ? "pending_review"
-                  : "completed"
-                  : capture.status;
+                const ds = getDisplayStatus(capture);
                 const cfg = statusConfig[ds] ?? statusConfig.created;
                 const dur = formatDuration(capture.durationSeconds);
 
@@ -238,7 +197,7 @@ export default function AdminCapturesPage() {
                   <TableRow
                     key={capture.id}
                     className="cursor-pointer group/row hover:bg-muted/40 transition-colors"
-                    onClick={() => navigateToCapture(capture, router)}
+                    onClick={() => navigateToCapture(capture, router.push)}
                     style={{ animation: `fade-in-up 0.3s ease-out backwards`, animationDelay: `${Math.min(i, 15) * 20}ms` }}
                   >
                     {/* Capture: icon + type + phones */}

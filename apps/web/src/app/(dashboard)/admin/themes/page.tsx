@@ -9,7 +9,6 @@ import {
   ChevronRightIcon,
   Target,
   ExternalLink,
-  ListFilter,
   Search,
 } from "lucide-react";
 import { motion } from "motion/react";
