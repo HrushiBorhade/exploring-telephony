@@ -33,6 +33,7 @@ import {
   useResendWhatsApp,
   proxyAudioUrl,
 } from "@/lib/api";
+import type { Utterance } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -212,6 +213,25 @@ export default function ThemedCaptureDetail() {
     () => (capture?.recordingUrl ? proxyAudioUrl(capture.recordingUrl, id) : null),
     [capture?.recordingUrl, id],
   );
+  const recordingUrlA = useMemo(
+    () => (capture?.recordingUrlA ? proxyAudioUrl(capture.recordingUrlA, id) : null),
+    [capture?.recordingUrlA, id],
+  );
+  const recordingUrlB = useMemo(
+    () => (capture?.recordingUrlB ? proxyAudioUrl(capture.recordingUrlB, id) : null),
+    [capture?.recordingUrlB, id],
+  );
+
+  // Parse transcripts for conversation view
+  const utterancesA: Utterance[] = useMemo(() => {
+    if (!capture?.transcriptA) return [];
+    try { return JSON.parse(capture.transcriptA); } catch { return []; }
+  }, [capture?.transcriptA]);
+  const utterancesB: Utterance[] = useMemo(() => {
+    if (!capture?.transcriptB) return [];
+    try { return JSON.parse(capture.transcriptB); } catch { return []; }
+  }, [capture?.transcriptB]);
+  const hasUtterances = utterancesA.length > 0 || utterancesB.length > 0;
 
   // ── Handlers ──
 
@@ -828,19 +848,90 @@ export default function ThemedCaptureDetail() {
                 </Card>
               </motion.div>
 
-              {/* Recording player (completed only) */}
-              {status === "completed" && recordingUrl && (
+              {/* Recordings (completed only) */}
+              {status === "completed" && (recordingUrl || recordingUrlA || recordingUrlB) && (
                 <motion.div variants={fadeUp}>
                   <Card>
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">Recording</CardTitle>
+                      <CardTitle className="text-sm">Recordings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {recordingUrl && (
+                        <WaveformPlayer
+                          url={recordingUrl}
+                          label="Mixed — both participants"
+                          accentColor="#a1a1aa"
+                        />
+                      )}
+                      {(recordingUrlA || recordingUrlB) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {recordingUrlA && (
+                            <WaveformPlayer
+                              url={recordingUrlA}
+                              label={`Participant A — ${capture.phoneA}`}
+                              accentColor="#22c55e"
+                            />
+                          )}
+                          {recordingUrlB && (
+                            <WaveformPlayer
+                              url={recordingUrlB}
+                              label={`Participant B — ${capture.phoneB}`}
+                              accentColor="#3b82f6"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )}
+
+              {/* Conversation / Transcript (completed only) */}
+              {status === "completed" && hasUtterances && (
+                <motion.div variants={fadeUp}>
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">Conversation</CardTitle>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-emerald-500" />
+                            <span className="text-[10px] text-muted-foreground">A ({utterancesA.length})</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-blue-500" />
+                            <span className="text-[10px] text-muted-foreground">B ({utterancesB.length})</span>
+                          </div>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <WaveformPlayer
-                        url={recordingUrl}
-                        label="Mixed recording"
-                        accentColor="#a1a1aa"
-                      />
+                      <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                        {[
+                          ...utterancesA.map((u, i) => ({ ...u, participant: "a" as const, idx: i })),
+                          ...utterancesB.map((u, i) => ({ ...u, participant: "b" as const, idx: i })),
+                        ]
+                          .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+                          .map((turn, i) => (
+                            <div
+                              key={`${turn.participant}-${turn.idx}`}
+                              className={`flex ${turn.participant === "b" ? "justify-end" : "justify-start"}`}
+                            >
+                              <div
+                                className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                                  turn.participant === "a"
+                                    ? "bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
+                                    : "bg-blue-500/10 text-blue-900 dark:text-blue-100"
+                                }`}
+                              >
+                                <p>{turn.text}</p>
+                                {turn.language && turn.language !== "en" && (
+                                  <span className="text-[10px] opacity-60 mt-0.5 block">{turn.language}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
