@@ -268,6 +268,7 @@ export const adminKeys = {
   users: (params?: Record<string, unknown>) => ["admin", "users", params ?? {}] as const,
   stats: ["admin", "stats"] as const,
   captures: (params?: Record<string, unknown>) => ["admin", "captures", params ?? {}] as const,
+  themeSamples: ["admin", "theme-samples"] as const,
 };
 
 export function useAdminStats() {
@@ -294,6 +295,21 @@ export function useAdminCaptures(opts?: { cursor?: string; limit?: number }) {
     },
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
+  });
+}
+
+export function useAdminThemeSamples() {
+  return useQuery({
+    queryKey: adminKeys.themeSamples,
+    queryFn: () => fetchJson<{
+      id: number;
+      category: string;
+      language: string;
+      status: string;
+      data: Record<string, string>;
+      assignedCaptureId: string | null;
+      assignedAt: string | null;
+    }[]>(`${API}/api/admin/theme-samples`),
   });
 }
 

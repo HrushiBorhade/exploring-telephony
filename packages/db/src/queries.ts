@@ -327,3 +327,22 @@ export async function getThemeSampleAvailability() {
     .groupBy(schema.themeSamples.language);
 }
 
+/**
+ * List all theme samples (for admin). Returns id, category, language, status,
+ * assignedCaptureId — but NOT the full data blob (too large for listing).
+ */
+export async function listAllThemeSamples() {
+  return db
+    .select({
+      id: schema.themeSamples.id,
+      category: schema.themeSamples.category,
+      language: schema.themeSamples.language,
+      status: schema.themeSamples.status,
+      data: schema.themeSamples.data,
+      assignedCaptureId: schema.themeSamples.assignedCaptureId,
+      assignedAt: schema.themeSamples.assignedAt,
+    })
+    .from(schema.themeSamples)
+    .orderBy(schema.themeSamples.language, schema.themeSamples.category, schema.themeSamples.id);
+}
+

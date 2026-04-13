@@ -59,6 +59,11 @@ const navAdmin = [
     url: "/admin/captures",
     icon: <PhoneCallIcon />,
   },
+  {
+    title: "Theme Samples",
+    url: "/admin/themes",
+    icon: <AudioWaveformIcon />,
+  },
 ];
 
 const navSecondary = [

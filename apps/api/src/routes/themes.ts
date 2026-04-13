@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { requireAuth, type AuthRequest } from "../middleware/auth";
+import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/auth";
 import * as dbq from "@repo/db";
 import { logger } from "../logger";
 import { activeCaptures } from "../services/state";
@@ -262,6 +262,20 @@ router.post("/api/captures/:id/whatsapp/resend", requireAuth, async (req: AuthRe
     res.json({ ok: true, sent: result.sent, method: result.method });
   } catch {
     res.status(500).json({ error: "Failed to resend WhatsApp message" });
+  }
+});
+
+// ── Admin: list all theme samples ──────────────────────────────────
+router.get("/api/admin/theme-samples", requireAuth, requireAdmin, async (_req: AuthRequest, res) => {
+  try {
+    const samples = await dbq.listAllThemeSamples();
+    res.json(samples.map((s) => ({
+      ...s,
+      data: JSON.parse(s.data),
+      assignedAt: s.assignedAt?.toISOString() ?? null,
+    })));
+  } catch {
+    res.status(500).json({ error: "Failed to list theme samples" });
   }
 });
 
