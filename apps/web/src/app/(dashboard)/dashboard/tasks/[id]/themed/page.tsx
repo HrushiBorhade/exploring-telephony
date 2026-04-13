@@ -848,93 +848,91 @@ export default function ThemedCaptureDetail() {
                 </Card>
               </motion.div>
 
-              {/* Recordings (completed only) */}
-              {status === "completed" && (recordingUrl || recordingUrlA || recordingUrlB) && (
-                <motion.div variants={fadeUp}>
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">Recordings</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {recordingUrl && (
+              {/* Recordings — same layout as general capture page */}
+              {status === "completed" && (
+                <>
+                  {recordingUrl && (
+                    <motion.div variants={fadeUp}>
+                      <WaveformPlayer
+                        url={recordingUrl}
+                        label="Mixed — both participants"
+                        accentColor="#a1a1aa"
+                      />
+                    </motion.div>
+                  )}
+
+                  {(recordingUrlA || recordingUrlB) && (
+                    <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {recordingUrlA && (
                         <WaveformPlayer
-                          url={recordingUrl}
-                          label="Mixed — both participants"
-                          accentColor="#a1a1aa"
+                          url={recordingUrlA}
+                          label={`Contributor A — ${capture.phoneA}`}
+                          accentColor="#3ea88e"
                         />
                       )}
-                      {(recordingUrlA || recordingUrlB) && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {recordingUrlA && (
-                            <WaveformPlayer
-                              url={recordingUrlA}
-                              label={`Participant A — ${capture.phoneA}`}
-                              accentColor="#22c55e"
-                            />
-                          )}
-                          {recordingUrlB && (
-                            <WaveformPlayer
-                              url={recordingUrlB}
-                              label={`Participant B — ${capture.phoneB}`}
-                              accentColor="#3b82f6"
-                            />
-                          )}
-                        </div>
+                      {recordingUrlB && (
+                        <WaveformPlayer
+                          url={recordingUrlB}
+                          label={`Contributor B — ${capture.phoneB}`}
+                          accentColor="#8b8b96"
+                        />
                       )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )}
+                    </motion.div>
+                  )}
 
-              {/* Conversation / Transcript (completed only) */}
-              {status === "completed" && hasUtterances && (
-                <motion.div variants={fadeUp}>
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-sm">Conversation</CardTitle>
+                  {hasUtterances && (
+                    <motion.div variants={fadeUp} className="space-y-1">
+                      <div className="py-2 flex items-center justify-between">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+                          Conversation
+                        </p>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1.5">
-                            <span className="size-2 rounded-full bg-emerald-500" />
+                            <span className="size-2 rounded-full" style={{ backgroundColor: "#3ea88e" }} />
                             <span className="text-[10px] text-muted-foreground">A ({utterancesA.length})</span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="size-2 rounded-full bg-blue-500" />
+                            <span className="size-2 rounded-full" style={{ backgroundColor: "#8b8b96" }} />
                             <span className="text-[10px] text-muted-foreground">B ({utterancesB.length})</span>
                           </div>
                         </div>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2 max-h-[500px] overflow-y-auto">
+
+                      <div className="space-y-1.5">
                         {[
                           ...utterancesA.map((u, i) => ({ ...u, participant: "a" as const, idx: i })),
                           ...utterancesB.map((u, i) => ({ ...u, participant: "b" as const, idx: i })),
                         ]
                           .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
-                          .map((turn, i) => (
+                          .map((turn) => (
                             <div
                               key={`${turn.participant}-${turn.idx}`}
-                              className={`flex ${turn.participant === "b" ? "justify-end" : "justify-start"}`}
+                              className={`flex gap-2 ${turn.participant === "b" ? "flex-row-reverse" : ""}`}
                             >
                               <div
-                                className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
-                                  turn.participant === "a"
-                                    ? "bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
-                                    : "bg-blue-500/10 text-blue-900 dark:text-blue-100"
-                                }`}
+                                className="max-w-[80%] rounded-2xl px-3.5 py-2"
+                                style={{
+                                  backgroundColor: turn.participant === "a"
+                                    ? "rgba(62,168,142,0.12)"
+                                    : "rgba(139,139,150,0.12)",
+                                }}
                               >
-                                <p>{turn.text}</p>
-                                {turn.language && turn.language !== "en" && (
-                                  <span className="text-[10px] opacity-60 mt-0.5 block">{turn.language}</span>
-                                )}
+                                <p className="text-sm leading-relaxed">{turn.text}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {turn.language && (
+                                    <span className="text-[10px] text-muted-foreground">{turn.language}</span>
+                                  )}
+                                  {turn.emotion && turn.emotion !== "neutral" && (
+                                    <span className="text-[10px] text-muted-foreground capitalize">{turn.emotion}</span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           ))}
                       </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                    </motion.div>
+                  )}
+                </>
               )}
             </>
           )}
