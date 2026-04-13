@@ -33,6 +33,7 @@ import {
   useResendWhatsApp,
   proxyAudioUrl,
 } from "@/lib/api";
+import { ConversationView, parseUtterances, participantColor } from "@/components/conversation-view";
 import type { Utterance } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -222,15 +223,9 @@ export default function ThemedCaptureDetail() {
     [capture?.recordingUrlB, id],
   );
 
-  // Parse transcripts for conversation view
-  const utterancesA: Utterance[] = useMemo(() => {
-    if (!capture?.transcriptA) return [];
-    try { return JSON.parse(capture.transcriptA); } catch { return []; }
-  }, [capture?.transcriptA]);
-  const utterancesB: Utterance[] = useMemo(() => {
-    if (!capture?.transcriptB) return [];
-    try { return JSON.parse(capture.transcriptB); } catch { return []; }
-  }, [capture?.transcriptB]);
+  // Parse transcripts using shared parseUtterances (includes audioUrl proxying)
+  const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id, proxyAudioUrl), [capture?.transcriptA, id]);
+  const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id, proxyAudioUrl), [capture?.transcriptB, id]);
   const hasUtterances = utterancesA.length > 0 || utterancesB.length > 0;
 
   // ── Handlers ──
@@ -888,48 +883,22 @@ export default function ThemedCaptureDetail() {
                         </p>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1.5">
-                            <span className="size-2 rounded-full" style={{ backgroundColor: "#3ea88e" }} />
+                            <span className="size-2 rounded-full" style={{ backgroundColor: participantColor.a }} />
                             <span className="text-[10px] text-muted-foreground">A ({utterancesA.length})</span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <span className="size-2 rounded-full" style={{ backgroundColor: "#8b8b96" }} />
+                            <span className="size-2 rounded-full" style={{ backgroundColor: participantColor.b }} />
                             <span className="text-[10px] text-muted-foreground">B ({utterancesB.length})</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        {[
-                          ...utterancesA.map((u, i) => ({ ...u, participant: "a" as const, idx: i })),
-                          ...utterancesB.map((u, i) => ({ ...u, participant: "b" as const, idx: i })),
-                        ]
-                          .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
-                          .map((turn) => (
-                            <div
-                              key={`${turn.participant}-${turn.idx}`}
-                              className={`flex gap-2 ${turn.participant === "b" ? "flex-row-reverse" : ""}`}
-                            >
-                              <div
-                                className="max-w-[80%] rounded-2xl px-3.5 py-2"
-                                style={{
-                                  backgroundColor: turn.participant === "a"
-                                    ? "rgba(62,168,142,0.12)"
-                                    : "rgba(139,139,150,0.12)",
-                                }}
-                              >
-                                <p className="text-sm leading-relaxed">{turn.text}</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                  {turn.language && (
-                                    <span className="text-[10px] text-muted-foreground">{turn.language}</span>
-                                  )}
-                                  {turn.emotion && turn.emotion !== "neutral" && (
-                                    <span className="text-[10px] text-muted-foreground capitalize">{turn.emotion}</span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
+                      <ConversationView
+                        utterancesA={utterancesA}
+                        utterancesB={utterancesB}
+                        phoneA={capture.phoneA}
+                        phoneB={capture.phoneB}
+                      />
                     </motion.div>
                   )}
                 </>
