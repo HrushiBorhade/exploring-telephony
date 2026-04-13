@@ -5,14 +5,18 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   Target,
   ExternalLink,
   ListFilter,
+  Search,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -32,7 +36,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminThemeSamples } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 
-const statusStyles: Record<string, { label: string; className: string }> = {
+// ── Constants ─────────────────────────────────────────────────────
+
+const PAGE_SIZE = 25;
+
+const STATUS_STYLES: Record<string, { label: string; className: string }> = {
   available: { label: "Available", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" },
   assigned:  { label: "Assigned",  className: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
   completed: { label: "Completed", className: "bg-blue-500/10 text-blue-600 dark:text-blue-400" },
@@ -53,6 +61,8 @@ function formatFieldLabel(key: string) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// ── Component ─────────────────────────────────────────────────────
+
 export default function AdminThemesPage() {
   const router = useRouter();
   const { data: session } = useSession();
@@ -61,6 +71,8 @@ export default function AdminThemesPage() {
   const [langFilter, setLangFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -69,17 +81,35 @@ export default function AdminThemesPage() {
     }
   }, [session, router]);
 
+  // Reset page when filters change
+  useEffect(() => { setPage(0); }, [langFilter, catFilter, statusFilter, search]);
+
+  // Filter
   const filtered = useMemo(() => {
     if (!samples) return [];
     return samples.filter((s) => {
       if (langFilter !== "all" && s.language !== langFilter) return false;
       if (catFilter !== "all" && s.category !== catFilter) return false;
       if (statusFilter !== "all" && s.status !== statusFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        // Search across all values in the data object + capture ID
+        const dataStr = Object.values(s.data).join(" ").toLowerCase();
+        const idMatch = s.assignedCaptureId?.toLowerCase().includes(q);
+        if (!dataStr.includes(q) && !idMatch) return false;
+      }
       return true;
     });
-  }, [samples, langFilter, catFilter, statusFilter]);
+  }, [samples, langFilter, catFilter, statusFilter, search]);
 
-  // Summary counts
+  // Paginate
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(
+    () => filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filtered, page],
+  );
+
+  // Summary
   const counts = useMemo(() => {
     if (!samples) return { total: 0, available: 0, assigned: 0, completed: 0 };
     return {
@@ -90,11 +120,11 @@ export default function AdminThemesPage() {
     };
   }, [samples]);
 
-  const hasActiveFilters = langFilter !== "all" || catFilter !== "all" || statusFilter !== "all";
+  const hasActiveFilters = langFilter !== "all" || catFilter !== "all" || statusFilter !== "all" || search !== "";
 
   return (
     <motion.div
-      className="p-4 lg:p-6 space-y-4"
+      className="p-4 lg:p-6 flex flex-col gap-4"
       initial="hidden"
       animate="visible"
       variants={pageStagger}
@@ -105,18 +135,27 @@ export default function AdminThemesPage() {
           <Target className="size-5 text-muted-foreground" />
           <h1 className="text-xl font-semibold font-heading tracking-tight">Theme Samples</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {counts.total} total &middot; {counts.available} available &middot; {counts.assigned} assigned &middot; {counts.completed} completed
-          {hasActiveFilters && ` · Showing ${filtered.length}`}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <span>{counts.total} total</span>
+          <span className="text-emerald-500">{counts.available} available</span>
+          <span className="text-amber-500">{counts.assigned} assigned</span>
+          <span className="text-blue-500">{counts.completed} completed</span>
+          {hasActiveFilters && <span>&middot; {filtered.length} matching</span>}
+        </div>
       </motion.div>
 
-      {/* Filters */}
+      {/* Toolbar: search + filters */}
       <motion.div variants={pageFadeUp} className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <ListFilter className="size-3.5" />
-          <span className="hidden sm:inline">Filter:</span>
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search values, capture ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-8 text-xs"
+          />
         </div>
+
         <Select value={langFilter} onValueChange={(v) => v && setLangFilter(v)}>
           <SelectTrigger className="w-[120px] h-8 text-xs">
             <SelectValue placeholder="Language" />
@@ -128,6 +167,7 @@ export default function AdminThemesPage() {
             ))}
           </SelectContent>
         </Select>
+
         <Select value={catFilter} onValueChange={(v) => v && setCatFilter(v)}>
           <SelectTrigger className="w-[150px] h-8 text-xs">
             <SelectValue placeholder="Category" />
@@ -139,8 +179,9 @@ export default function AdminThemesPage() {
             ))}
           </SelectContent>
         </Select>
+
         <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
-          <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectTrigger className="w-[120px] h-8 text-xs">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -150,12 +191,13 @@ export default function AdminThemesPage() {
             <SelectItem value="completed">Completed</SelectItem>
           </SelectContent>
         </Select>
+
         {hasActiveFilters && (
           <Button
             variant="ghost"
             size="sm"
             className="h-8 text-xs text-muted-foreground"
-            onClick={() => { setLangFilter("all"); setCatFilter("all"); setStatusFilter("all"); }}
+            onClick={() => { setLangFilter("all"); setCatFilter("all"); setStatusFilter("all"); setSearch(""); }}
           >
             Clear
           </Button>
@@ -163,29 +205,30 @@ export default function AdminThemesPage() {
       </motion.div>
 
       {/* Table */}
-      <motion.div variants={pageFadeUp} className="border rounded-lg overflow-hidden overflow-x-auto">
+      <motion.div variants={pageFadeUp} className="border rounded-lg overflow-hidden overflow-x-auto flex-1">
         {isPending ? (
           <div className="space-y-0">
-            {Array.from({ length: 8 }).map((_, i) => (
+            {Array.from({ length: 10 }).map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-border/50">
+                <Skeleton className="size-4 rounded" />
                 <Skeleton className="h-4 w-8" />
+                <Skeleton className="h-5 w-16 rounded-full" />
                 <Skeleton className="h-5 w-20 rounded-full" />
                 <Skeleton className="h-5 w-16 rounded-full" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-                <Skeleton className="h-4 w-20 ml-auto" />
+                <Skeleton className="h-4 w-20" />
               </div>
             ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-12 text-center text-sm text-muted-foreground">
-            {hasActiveFilters ? "No samples match filters" : "No theme samples found"}
+            {hasActiveFilters ? "No samples match your filters" : "No theme samples found"}
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10 pl-3" />
-                <TableHead>ID</TableHead>
+                <TableHead className="w-8 pl-3" />
+                <TableHead className="w-16">ID</TableHead>
                 <TableHead>Language</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Status</TableHead>
@@ -193,19 +236,19 @@ export default function AdminThemesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((sample) => {
+              {paginated.map((sample) => {
                 const isExpanded = expandedId === sample.id;
-                const st = statusStyles[sample.status] ?? statusStyles.available;
+                const st = STATUS_STYLES[sample.status] ?? STATUS_STYLES.available;
                 const fields = Object.entries(sample.data);
 
                 return (
-                  <>
+                  <>{/* Fragment needed for adjacent rows */}
                     <TableRow
                       key={sample.id}
                       className="cursor-pointer hover:bg-muted/40 transition-colors"
                       onClick={() => setExpandedId(isExpanded ? null : sample.id)}
                     >
-                      <TableCell className="pl-3 w-10">
+                      <TableCell className="pl-3 w-8">
                         {isExpanded
                           ? <ChevronDown className="size-4 text-muted-foreground" />
                           : <ChevronRight className="size-4 text-muted-foreground" />}
@@ -243,18 +286,18 @@ export default function AdminThemesPage() {
                             <ExternalLink className="size-3" />
                           </Button>
                         ) : (
-                          <span className="text-xs text-muted-foreground/50">&mdash;</span>
+                          <span className="text-xs text-muted-foreground/40">&mdash;</span>
                         )}
                       </TableCell>
                     </TableRow>
 
-                    {/* Expanded: show all key-value pairs */}
+                    {/* Expanded row: show all values */}
                     {isExpanded && (
-                      <TableRow key={`${sample.id}-expanded`} className="bg-muted/20 hover:bg-muted/20">
+                      <TableRow key={`${sample.id}-detail`} className="bg-muted/20 hover:bg-muted/20">
                         <TableCell colSpan={6} className="p-0">
-                          <div className="px-6 py-4 space-y-3">
+                          <div className="px-4 sm:px-6 py-4 space-y-3">
                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                              Sample Values ({fields.length} fields)
+                              Sample Values &middot; {fields.length} fields
                             </p>
                             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                               {fields.map(([key, value]) => (
@@ -282,6 +325,56 @@ export default function AdminThemesPage() {
           </Table>
         )}
       </motion.div>
+
+      {/* Pagination */}
+      {filtered.length > PAGE_SIZE && (
+        <motion.div variants={pageFadeUp} className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1"
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              <ChevronLeftIcon className="size-4" />
+              <span className="hidden sm:inline">Previous</span>
+            </Button>
+            {/* Page numbers */}
+            {Array.from({ length: totalPages }).map((_, i) => {
+              // Show first, last, current, and neighbors
+              const show = i === 0 || i === totalPages - 1 || Math.abs(i - page) <= 1;
+              const showEllipsis = !show && (i === 1 || i === totalPages - 2);
+              if (showEllipsis) return <span key={i} className="px-1 text-xs text-muted-foreground">&hellip;</span>;
+              if (!show) return null;
+              return (
+                <Button
+                  key={i}
+                  variant={i === page ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 w-8 p-0 text-xs"
+                  onClick={() => setPage(i)}
+                >
+                  {i + 1}
+                </Button>
+              );
+            })}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRightIcon className="size-4" />
+            </Button>
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   );
 }
