@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -242,9 +242,8 @@ export default function AdminThemesPage() {
                 const fields = Object.entries(sample.data);
 
                 return (
-                  <>{/* Fragment needed for adjacent rows */}
+                  <React.Fragment key={sample.id}>
                     <TableRow
-                      key={sample.id}
                       className="cursor-pointer hover:bg-muted/40 transition-colors"
                       onClick={() => setExpandedId(isExpanded ? null : sample.id)}
                     >
@@ -318,7 +317,7 @@ export default function AdminThemesPage() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </React.Fragment>
                 );
               })}
             </TableBody>
