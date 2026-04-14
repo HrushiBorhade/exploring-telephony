@@ -14,20 +14,22 @@ import {
 } from "@/components/ui/breadcrumb";
 
 const routeConfig: Record<string, { label: string; parent?: { label: string; href: string } }> = {
-  "/capture": { label: "Captures" },
-  "/settings": { label: "Settings" },
+  "/dashboard": { label: "Dashboard" },
+  "/dashboard/tasks": { label: "Tasks" },
+  "/dashboard/settings": { label: "Settings" },
   "/admin": { label: "Admin Dashboard" },
   "/admin/users": { label: "Users", parent: { label: "Admin", href: "/admin" } },
   "/admin/captures": { label: "All Captures", parent: { label: "Admin", href: "/admin" } },
+  "/admin/themes": { label: "Theme Samples", parent: { label: "Admin", href: "/admin" } },
   "/onboarding": { label: "Onboarding" },
 };
 
 export function SiteHeader() {
   const pathname = usePathname();
 
-  // Match capture detail: /capture/{id}
-  const captureDetailMatch = pathname.match(/^\/capture\/(.+)$/);
-  const captureId = captureDetailMatch?.[1];
+  // Match task detail: /dashboard/tasks/{id} or /dashboard/tasks/{id}/themed
+  const taskDetailMatch = pathname.match(/^\/dashboard\/tasks\/([^/]+)/);
+  const taskId = taskDetailMatch?.[1];
 
   // Resolve breadcrumb from route config or dynamic match
   const route = routeConfig[pathname];
@@ -49,16 +51,16 @@ export function SiteHeader() {
               </>
             )}
 
-            {/* Capture detail: Captures → {id} */}
-            {captureId ? (
+            {/* Task detail: Tasks → {id} */}
+            {taskId ? (
               <>
                 <BreadcrumbItem>
-                  <BreadcrumbLink href="/capture">Captures</BreadcrumbLink>
+                  <BreadcrumbLink href="/dashboard/tasks">Tasks</BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbPage className="font-mono text-xs max-w-[100px] sm:max-w-[160px] truncate">
-                    {captureId.length > 10 ? `${captureId.slice(0, 10)}\u2026` : captureId}
+                    {taskId.length > 10 ? `${taskId.slice(0, 10)}\u2026` : taskId}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </>
