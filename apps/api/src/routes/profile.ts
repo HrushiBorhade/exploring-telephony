@@ -29,7 +29,7 @@ router.get("/api/profile", requireAuth, async (req: AuthRequest, res) => {
 
 // PUT /api/profile — upsert profile fields
 router.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
-  const { name, age, gender, city, state } = req.body;
+  const { name, age, gender, city, state, upiId } = req.body;
 
   const errors: Record<string, string> = {};
   if (!name || typeof name !== "string" || name.trim().length < 2) errors.name = "Name must be at least 2 characters";
@@ -39,6 +39,11 @@ router.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
   if (!state) errors.state = "State is required";
   if (!city || typeof city !== "string" || city.trim().length < 2) errors.city = "City must be at least 2 characters";
   else if (city.length > MAX_CITY_LENGTH) errors.city = `City must be under ${MAX_CITY_LENGTH} characters`;
+  if (upiId !== undefined && upiId !== "") {
+    const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$/;
+    if (typeof upiId !== "string" || !upiRegex.test(upiId)) errors.upiId = "Enter a valid UPI ID (e.g., name@upi)";
+    else if (upiId.length > 50) errors.upiId = "UPI ID must be under 50 characters";
+  }
 
   if (Object.keys(errors).length > 0) {
     res.status(400).json({ error: "Validation failed", fields: errors });
@@ -46,7 +51,7 @@ router.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
   }
 
   try {
-    await dbq.upsertProfile(req.userId!, { name: name.trim(), age: Number(age), gender, city: city.trim(), state });
+    await dbq.upsertProfile(req.userId!, { name: name.trim(), age: Number(age), gender, city: city.trim(), state, upiId: upiId?.trim() || undefined });
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to save profile" });

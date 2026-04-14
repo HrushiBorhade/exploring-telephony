@@ -178,6 +178,7 @@ function ProfileEditForm({
       gender: profile.profile?.gender ?? "",
       state: profile.profile?.state ?? "",
       city: profile.profile?.city ?? "",
+      upiId: profile.profile?.upiId ?? "",
     },
   });
 
@@ -298,6 +299,22 @@ function ProfileEditForm({
         />
         {errors.city && (
           <p className="text-xs text-destructive">{errors.city.message}</p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="edit-upiId" className="text-sm text-muted-foreground">
+          UPI ID
+        </label>
+        <Input
+          id="edit-upiId"
+          placeholder="yourname@upi"
+          maxLength={50}
+          {...register("upiId")}
+          disabled={isPending}
+        />
+        {errors.upiId && (
+          <p className="text-xs text-destructive">{errors.upiId.message}</p>
         )}
       </div>
 
@@ -604,6 +621,7 @@ export default function SettingsPage() {
                   <InfoRow label="Gender" value={genderLabel} />
                   <InfoRow label="City" value={profile?.city ?? "\u2014"} />
                   <InfoRow label="State" value={profile?.state ?? "\u2014"} />
+                  <InfoRow label="UPI ID" value={profile?.upiId ?? "\u2014"} />
                 </motion.div>
               )}
             </AnimatePresence>

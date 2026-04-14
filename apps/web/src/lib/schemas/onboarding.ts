@@ -6,6 +6,11 @@ export const profileSchema = z.object({
   gender: z.string().min(1, "Gender is required"),
   state: z.string().min(1, "State is required"),
   city: z.string().min(2, "City must be at least 2 characters"),
+  upiId: z.string()
+    .regex(/^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$/, "Enter a valid UPI ID (e.g., name@upi)")
+    .max(50, "UPI ID must be under 50 characters")
+    .optional()
+    .or(z.literal("")),
 });
 
 export const languagesSchema = z.object({

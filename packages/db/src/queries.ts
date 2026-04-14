@@ -251,7 +251,7 @@ export async function getProfile(userId: string) {
 
 export async function upsertProfile(
   userId: string,
-  data: { name: string; age: number; gender: string; city: string; state: string },
+  data: { name: string; age: number; gender: string; city: string; state: string; upiId?: string },
 ) {
   await db
     .insert(schema.userProfiles)

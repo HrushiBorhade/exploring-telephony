@@ -42,6 +42,7 @@ export function ProfileStep({ onNext, profile }: StepProps) {
       gender: profile.profile?.gender ?? "",
       state: profile.profile?.state ?? "",
       city: profile.profile?.city ?? "",
+      upiId: profile.profile?.upiId ?? "",
     },
   });
 
@@ -171,6 +172,25 @@ export function ProfileStep({ onNext, profile }: StepProps) {
               />
               {errors.city && (
                 <p className="text-xs text-destructive">{errors.city.message}</p>
+              )}
+            </motion.div>
+
+            <motion.div variants={staggerChild} className="space-y-1.5">
+              <label htmlFor="upiId" className="text-sm font-medium">
+                UPI ID
+              </label>
+              <Input
+                id="upiId"
+                placeholder="yourname@upi"
+                maxLength={50}
+                {...register("upiId")}
+                disabled={updateProfile.isPending}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                For receiving payments. You can add this later in settings.
+              </p>
+              {errors.upiId && (
+                <p className="text-xs text-destructive">{errors.upiId.message}</p>
               )}
             </motion.div>
 

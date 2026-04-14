@@ -108,7 +108,7 @@ export function useProfile() {
 export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; age: number; gender: string; city: string; state: string }) =>
+    mutationFn: (data: { name: string; age: number; gender: string; city: string; state: string; upiId?: string }) =>
       postJson<{ success: boolean }>(`${API}/api/profile`, data, "PUT"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileKeys.profile });

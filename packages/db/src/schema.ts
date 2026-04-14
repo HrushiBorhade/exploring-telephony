@@ -110,6 +110,7 @@ export const userProfiles = pgTable("user_profiles", {
   gender: text("gender").notNull(),
   city: text("city").notNull(),
   state: text("state").notNull(),
+  upiId: text("upi_id"),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

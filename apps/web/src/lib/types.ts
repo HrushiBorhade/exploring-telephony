@@ -81,6 +81,7 @@ export interface UserProfile {
   gender: string;
   city: string;
   state: string;
+  upiId: string | null;
   onboardingCompleted: boolean;
   createdAt: string;
   updatedAt: string;
