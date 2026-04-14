@@ -79,9 +79,9 @@ export async function sendThemeWhatsApp({
         wid,
         type: "text",
         bodyValues: {
-          "1": publicLink,
-          "2": categoryLabel,
-          "3": languageLabel,
+          "1": categoryLabel,
+          "2": languageLabel,
+          "3": publicLink,
         },
       }),
       signal: controller.signal,
