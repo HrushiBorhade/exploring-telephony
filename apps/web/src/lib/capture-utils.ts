@@ -5,10 +5,10 @@ export const statusConfig: Record<
   { label: string; className: string; dot: string; pulse?: boolean }
 > = {
   created:         { label: "Ready",          className: "bg-muted text-muted-foreground",       dot: "bg-muted-foreground" },
-  calling:         { label: "Dialling",       className: "bg-amber-500/10 text-amber-500",       dot: "bg-amber-500", pulse: true },
+  calling:         { label: "Dialing Phones...", className: "bg-amber-500/10 text-amber-500",     dot: "bg-amber-500", pulse: true },
   active:          { label: "Recording",      className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500", pulse: true },
-  ended:           { label: "Uploading",      className: "bg-blue-500/10 text-blue-500",         dot: "bg-blue-500", pulse: true },
-  processing:      { label: "Processing",     className: "bg-violet-500/10 text-violet-500",     dot: "bg-violet-500", pulse: true },
+  ended:           { label: "Saving Recordings...", className: "bg-blue-500/10 text-blue-500",   dot: "bg-blue-500", pulse: true },
+  processing:      { label: "Transcribing...", className: "bg-violet-500/10 text-violet-500",    dot: "bg-violet-500", pulse: true },
   failed:          { label: "Failed",         className: "bg-destructive/10 text-destructive",   dot: "bg-destructive" },
   completed:       { label: "Completed",      className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500" },
   pending_review:  { label: "Pending Review", className: "bg-amber-500/10 text-amber-500",       dot: "bg-amber-500" },

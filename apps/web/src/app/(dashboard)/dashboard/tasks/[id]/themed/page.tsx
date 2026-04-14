@@ -69,21 +69,21 @@ const statusConfig: Record<
     dot: "bg-zinc-400",
   },
   calling: {
-    label: "Calling...",
+    label: "Dialing Phones...",
     badgeClass:
       "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-900",
     dot: "bg-yellow-500 dark:bg-yellow-400",
     pulse: true,
   },
   active: {
-    label: "In Call",
+    label: "Recording",
     badgeClass:
       "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900",
     dot: "bg-emerald-500 dark:bg-emerald-400",
     pulse: true,
   },
   ended: {
-    label: "Processing...",
+    label: "Saving Recordings...",
     badgeClass:
       "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",
     dot: "bg-blue-500 dark:bg-blue-400",
@@ -549,7 +549,7 @@ export default function ThemedCaptureDetail() {
                         : "text-emerald-700 dark:text-emerald-400"
                     }`}
                   >
-                    {status === "calling" ? "Dialling" : "Recording"}
+                    {status === "calling" ? "Dialing Phones" : "Recording"}
                   </p>
                   <BarVisualizer
                     state={status === "calling" ? "connecting" : "speaking"}
@@ -562,7 +562,7 @@ export default function ThemedCaptureDetail() {
                   />
                   <p className="text-center text-[11px] text-muted-foreground sm:text-xs">
                     {status === "calling"
-                      ? `Calling ${capture.phoneA} and ${capture.phoneB}\u2026`
+                      ? `Connecting ${capture.phoneA} and ${capture.phoneB} \u2014 waiting for consent`
                       : "Both parties connected \u00B7 recording in progress"}
                   </p>
                 </div>
@@ -728,7 +728,7 @@ export default function ThemedCaptureDetail() {
                   Call Failed
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  One or both phones didn&apos;t answer, or the call was disconnected before recording could start.
+                  The call could not be completed. This may be due to phones not answering, consent not being given, or a connection issue.
                 </p>
                 <Button
                   onClick={() => startMutation.mutate()}
@@ -762,8 +762,8 @@ export default function ThemedCaptureDetail() {
                   <div className="p-4 sm:p-6 space-y-3">
                     <p className="text-center text-xs font-medium text-purple-700 uppercase tracking-widest dark:text-purple-400">
                       {status === "processing"
-                        ? "Transcribing & Processing"
-                        : "Uploading Recordings"}
+                        ? "Transcribing & Slicing"
+                        : "Saving Recordings"}
                     </p>
                     <BarVisualizer
                       state="thinking"
@@ -776,8 +776,8 @@ export default function ThemedCaptureDetail() {
                     />
                     <p className="text-center text-[11px] text-muted-foreground sm:text-xs">
                       {status === "processing"
-                        ? "Processing audio and generating results\u2026"
-                        : "Uploading recordings to storage \u2014 usually 10\u201330s"}
+                        ? "Generating transcripts, audio clips and dataset CSV\u2026"
+                        : "Uploading recordings to storage \u2014 usually takes 10\u201330s"}
                     </p>
                   </div>
                 </motion.div>
