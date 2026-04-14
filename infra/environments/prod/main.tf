@@ -575,6 +575,7 @@ module "ecs" {
             { name = "GEMINI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:GEMINI_API_KEY::" },
             { name = "AUTHKEY_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_API_KEY::" },
             { name = "AUTHKEY_WID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_WID::" },
+            { name = "AUTHKEY_THEME_WID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_THEME_WID::" },
             { name = "BETTER_AUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:BETTER_AUTH_SECRET::" },
           ]
 
