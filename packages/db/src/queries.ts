@@ -48,11 +48,23 @@ export async function getCaptureStats(userId: string) {
       total: count(),
       completed: count(sql`CASE WHEN ${schema.captures.status} = 'completed' THEN 1 END`),
       totalDuration: sum(schema.captures.durationSeconds),
-      verifiedCount: count(sql`CASE WHEN ${schema.captures.verified} = true THEN 1 END`),
-      verifiedDuration: sum(sql`CASE WHEN ${schema.captures.verified} = true THEN ${schema.captures.durationSeconds} ELSE 0 END`),
     })
     .from(schema.captures)
     .where(eq(schema.captures.userId, userId));
+
+  // Separate query for verified stats — avoids CASE+SUM column interpolation issues
+  const [verified] = await db
+    .select({
+      verifiedCount: count(),
+      verifiedDuration: sql<number>`COALESCE(SUM(${schema.captures.durationSeconds}), 0)`,
+    })
+    .from(schema.captures)
+    .where(
+      and(
+        eq(schema.captures.userId, userId),
+        eq(schema.captures.verified, true),
+      )
+    );
 
   const [weekly] = await db
     .select({ thisWeek: count() })
@@ -68,8 +80,8 @@ export async function getCaptureStats(userId: string) {
     total: totals?.total ?? 0,
     completed: Number(totals?.completed ?? 0),
     totalDuration: Number(totals?.totalDuration ?? 0),
-    verifiedCount: Number(totals?.verifiedCount ?? 0),
-    verifiedDuration: Number(totals?.verifiedDuration ?? 0),
+    verifiedCount: Number(verified?.verifiedCount ?? 0),
+    verifiedDuration: Number(verified?.verifiedDuration ?? 0),
     thisWeek: weekly?.thisWeek ?? 0,
   };
 }
