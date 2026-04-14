@@ -6,6 +6,7 @@ import * as dbq from "@repo/db";
 import { transcribeWithDeepgram } from "../lib/deepgram";
 import { type Segment } from "../lib/gemini";
 import { convertToMp3, sliceMp3, formatTimestamp, getDuration, trimStart } from "../lib/ffmpeg";
+import { enhanceUtterances } from "../lib/gemini-enhance";
 import { uploadToS3, downloadFromS3, deleteS3Prefix } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { moderateTranscript } from "../lib/moderation";
@@ -24,10 +25,16 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
 
   log.info("Starting audio processing pipeline");
 
+  const stepStart = () => Date.now();
+  const stepLog = (step: string, start: number) => {
+    log.info({ step, durationMs: Date.now() - start }, `Step completed: ${step}`);
+  };
+
   const tmpDir = await mkdtemp(path.join(tmpdir(), `audio-${captureId}-`));
 
   try {
     // ── Step 1: Download recordings from S3 ───────────────────────
+    const t1 = stepStart();
     await job.updateProgress(5);
     log.info("Step 1: Downloading recordings");
 
@@ -46,8 +53,10 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       writeFile(callerARaw, callerABuf),
       writeFile(callerBRaw, callerBBuf),
     ]);
+    stepLog("download", t1);
 
     // ── Step 2: Convert to MP3 16kHz mono ─────────────────────────
+    const t2 = stepStart();
     await job.updateProgress(10);
     log.info("Step 2: Converting to MP3");
 
@@ -60,8 +69,10 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       convertToMp3(callerARaw, callerAMp3),
       convertToMp3(callerBRaw, callerBMp3),
     ]);
+    stepLog("convert", t2);
 
     // ── Step 3: Align tracks (trim longer starts) ─────────────────
+    const t3 = stepStart();
     const [durMixed, durA, durB] = await Promise.all([
       getDuration(mixedMp3),
       getDuration(callerAMp3),
@@ -93,8 +104,10 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       getDuration(callerBMp3),
     ]);
     log.info({ alignedDurA, alignedDurB }, "Post-alignment durations");
+    stepLog("align", t3);
 
     // ── Step 4: Upload full tracks to S3 ──────────────────────────
+    const t4 = stepStart();
     await job.updateProgress(20);
     log.info("Step 4: Uploading full tracks");
 
@@ -103,8 +116,10 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       uploadToS3(`captures/${captureId}/participant-a/full.mp3`, await readFile(callerAMp3), "audio/mpeg"),
       uploadToS3(`captures/${captureId}/participant-b/full.mp3`, await readFile(callerBMp3), "audio/mpeg"),
     ]);
+    stepLog("upload-tracks", t4);
 
     // ── Step 5: Transcribe with Deepgram (frame-accurate timestamps) ──
+    const t5 = stepStart();
     await job.updateProgress(30);
     log.info("Step 5: Transcribing with Deepgram nova-3");
 
@@ -124,8 +139,10 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     resultB.segments = validateSegments(resultB.segments, alignedDurB);
 
     log.info({ segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Transcription complete");
+    stepLog("transcribe", t5);
 
     // ── Step 6: Clip utterances with ffmpeg -c copy (no re-encoding) ──
+    const t6 = stepStart();
     await job.updateProgress(50);
     log.info("Step 6: Slicing clips");
 
@@ -137,10 +154,57 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     const clipUrlsA = await sliceAndUpload(callerAMp3, resultA.segments, captureId, "participant-a", tmpDir);
     await job.updateProgress(65);
     const clipUrlsB = await sliceAndUpload(callerBMp3, resultB.segments, captureId, "participant-b", tmpDir);
+    stepLog("clip", t6);
 
-    // ── Step 7: Generate CSV ──────────────────────────────────────
+    // ── Step 7: Enhance with Gemini (better text, emotion, language) ──
+    const t7 = stepStart();
+    await job.updateProgress(70);
+    log.info("Step 7: Enhancing utterances with Gemini");
+
+    // Read clip files for Gemini enhancement
+    const buildClipInputs = async (segments: Segment[], mp3Path: string) => {
+      return Promise.all(segments.map(async (seg) => {
+        const clipPath = path.join(tmpDir, `enhance-${seg.startSeconds.toFixed(2)}.mp3`);
+        await sliceMp3(mp3Path, clipPath, seg.startSeconds, seg.endSeconds);
+        const buffer = await readFile(clipPath);
+        return { buffer, mimeType: "audio/mp3", fallbackText: seg.content, fallbackLanguage: seg.language };
+      }));
+    };
+
+    const [clipsA, clipsB] = await Promise.all([
+      buildClipInputs(resultA.segments, callerAMp3),
+      buildClipInputs(resultB.segments, callerBMp3),
+    ]);
+
+    const [enhancedA, enhancedB] = await Promise.all([
+      enhanceUtterances(clipsA),
+      enhanceUtterances(clipsB),
+    ]);
+
+    // Merge: keep Deepgram timestamps, use Gemini text/emotion/language
+    for (let i = 0; i < resultA.segments.length; i++) {
+      resultA.segments[i].content = enhancedA[i].text;
+      resultA.segments[i].emotion = enhancedA[i].emotion;
+      resultA.segments[i].language = enhancedA[i].language;
+    }
+    for (let i = 0; i < resultB.segments.length; i++) {
+      resultB.segments[i].content = enhancedB[i].text;
+      resultB.segments[i].emotion = enhancedB[i].emotion;
+      resultB.segments[i].language = enhancedB[i].language;
+    }
+
+    log.info({
+      enhancedA: enhancedA.filter(e => e.enhanced).length,
+      enhancedB: enhancedB.filter(e => e.enhanced).length,
+      totalA: enhancedA.length,
+      totalB: enhancedB.length,
+    }, "Enhancement complete");
+    stepLog("enhance", t7);
+
+    // ── Step 8: Generate CSV ──────────────────────────────────────
+    const t8 = stepStart();
     await job.updateProgress(80);
-    log.info("Step 7: Generating CSV");
+    log.info("Step 8: Generating CSV");
 
     const csv = generateDatasetCsv(
       captureId,
@@ -159,10 +223,12 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       }, null, 2), "utf-8"),
       "application/json",
     );
+    stepLog("csv", t8);
 
-    // ── Step 8: Build utterances + moderation ─────────────────────
+    // ── Step 9: Build utterances + moderation ─────────────────────
+    const t9 = stepStart();
     await job.updateProgress(85);
-    log.info("Step 8: Moderation scan");
+    log.info("Step 9: Moderation scan");
 
     const utterancesA = resultA.segments.map((s, i) => ({
       start: s.startSeconds, end: s.endSeconds, text: s.content,
@@ -174,10 +240,12 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
     }));
 
     const moderated = await moderateTranscript(utterancesA, utterancesB);
+    stepLog("moderation", t9);
 
-    // ── Step 9: Save to database ──────────────────────────────────
+    // ── Step 10: Save to database ─────────────────────────────────
+    const t10 = stepStart();
     await job.updateProgress(95);
-    log.info("Step 9: Saving to database");
+    log.info("Step 10: Saving to database");
 
     await dbq.updateCapture(captureId, {
       status: "completed",
@@ -190,6 +258,8 @@ export async function processAudio(job: Job<AudioJobData>): Promise<void> {
       transcriptA: JSON.stringify(moderated.utterancesA),
       transcriptB: JSON.stringify(moderated.utterancesB),
     });
+
+    stepLog("save-db", t10);
 
     await job.updateProgress(100);
     log.info({ csvUrl, segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Pipeline complete");
