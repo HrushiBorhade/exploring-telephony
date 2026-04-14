@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCaptures } from "@/lib/api";
-import { statusConfig, formatDuration, timeAgo, navigateToCapture } from "@/lib/capture-utils";
+import { statusConfig, getDisplayStatus, formatDuration, timeAgo, navigateToCapture } from "@/lib/capture-utils";
 import type { Capture } from "@/lib/types";
 
 // navigateToCapture imported from @/lib/capture-utils
@@ -344,9 +344,8 @@ export default function TasksPage() {
                     const isThemed = !!c.themeSampleId;
                     const callFailed =
                       c.status === "ended" && !c.startedAt;
-                    const sc = callFailed
-                      ? statusConfig.failed
-                      : (statusConfig[c.status] ?? statusConfig.created);
+                    const displayStatus = callFailed ? "failed" : getDisplayStatus(c);
+                    const sc = statusConfig[displayStatus] ?? statusConfig.created;
                     const dur = formatDuration(c.durationSeconds);
 
                     return (

@@ -9,7 +9,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PhoneCallIcon, ClockIcon } from "lucide-react";
+import { PhoneCallIcon, ClockIcon, ShieldCheck, IndianRupee } from "lucide-react";
 import { motion } from "motion/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NumberTicker } from "@/components/ui/number-ticker";
@@ -59,7 +59,8 @@ export function SectionCards() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-3">
+        <CardSkeleton />
         <CardSkeleton />
         <CardSkeleton />
       </div>
@@ -71,10 +72,13 @@ export function SectionCards() {
   }
 
   const avgDuration = stats.completed > 0 ? Math.round(stats.totalDuration / stats.completed) : 0;
+  const pendingCount = stats.completed - stats.verifiedCount;
+  const verifiedHours = stats.verifiedDuration / 3600;
+  const estimatedEarnings = Math.round(verifiedHours * 500);
 
   return (
     <motion.div
-      className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2"
+      className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-3"
       initial="hidden"
       animate="visible"
       variants={stagger}
@@ -96,6 +100,11 @@ export function SectionCards() {
             <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
               <PhoneCallIcon className="size-3.5" />
               {stats.completed} completed
+              {pendingCount > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  ({pendingCount} pending review)
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -120,6 +129,41 @@ export function SectionCards() {
             <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
               <ClockIcon className="size-3.5" />
               Avg. {fmtDuration(avgDuration)} per capture
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <motion.div variants={cardVariant}>
+        <Card className="bg-gradient-to-t from-emerald-500/5 to-card shadow-xs dark:bg-card transition-all duration-200 hover:-translate-y-0.5 hover:ring-foreground/20">
+          <CardHeader>
+            <CardDescription>Verified Audio</CardDescription>
+            <CardAction>
+              <Badge variant="outline" className="text-xs gap-1 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+                <IndianRupee className="size-2.5" />
+                500/hr
+              </Badge>
+            </CardAction>
+            <CardTitle className="text-4xl font-semibold tracking-tight">
+              {stats.verifiedDuration > 0 ? (
+                <NumberTicker
+                  value={stats.verifiedDuration}
+                  format={fmtHoursFromSeconds}
+                />
+              ) : (
+                "\u2014"
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm">
+            <div className="flex items-center gap-1.5 font-medium text-muted-foreground">
+              <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              {stats.verifiedCount} verified
+              {estimatedEarnings > 0 && (
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  &middot; ~{"\u20B9"}{estimatedEarnings}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>

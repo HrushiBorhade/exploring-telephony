@@ -7,6 +7,8 @@ export interface CaptureStats {
   total: number;
   completed: number;
   totalDuration: number;
+  verifiedCount: number;
+  verifiedDuration: number;
   thisWeek: number;
 }
 
