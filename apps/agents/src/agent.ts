@@ -15,7 +15,6 @@ import {
   WorkerOptions,
   cli,
   defineAgent,
-  inference,
   voice,
 } from "@livekit/agents";
 import { SipClient, RoomServiceClient } from "livekit-server-sdk";
@@ -31,6 +30,11 @@ const { AudioFrame } = require("@livekit/rtc-node") as {
 const CONSENT_AUDIO = path.resolve(__dirname, "../assets/consent_48k.wav");
 const ANNOUNCE_AUDIO = path.resolve(__dirname, "../assets/announce_48k.wav");
 const PLEASE_WAIT_AUDIO = path.resolve(__dirname, "../assets/please_wait_48k.wav");
+const NO_ANSWER_AUDIO = path.resolve(__dirname, "../assets/no_answer_48k.wav");
+const SECOND_NO_ANSWER_AUDIO = path.resolve(__dirname, "../assets/second_no_answer_48k.wav");
+const CONSENT_RETRY_AUDIO = path.resolve(__dirname, "../assets/consent_retry_48k.wav");
+const CONSENT_TIMEOUT_AUDIO = path.resolve(__dirname, "../assets/consent_timeout_48k.wav");
+const SYSTEM_ERROR_AUDIO = path.resolve(__dirname, "../assets/system_error_48k.wav");
 const SAMPLE_RATE = 48_000;
 const NUM_CHANNELS = 1;
 const SAMPLES_PER_FRAME = Math.floor(SAMPLE_RATE * 0.02); // 20ms = 960 samples
@@ -133,7 +137,11 @@ async function setRoomMetadata(roomName: string, metadata: Record<string, unknow
 // ── Agent ──
 export default defineAgent({
   prewarm: async (_proc: JobProcess) => {
-    for (const f of [CONSENT_AUDIO, ANNOUNCE_AUDIO, PLEASE_WAIT_AUDIO]) {
+    for (const f of [
+      CONSENT_AUDIO, ANNOUNCE_AUDIO, PLEASE_WAIT_AUDIO,
+      NO_ANSWER_AUDIO, SECOND_NO_ANSWER_AUDIO, CONSENT_RETRY_AUDIO,
+      CONSENT_TIMEOUT_AUDIO, SYSTEM_ERROR_AUDIO,
+    ]) {
       if (fs.existsSync(f)) {
         parseWavFile(f);
         console.log(`[PREWARM] Cached: ${path.basename(f)}`);
@@ -170,7 +178,6 @@ export default defineAgent({
 
     const session = new voice.AgentSession({
       aecWarmupDuration: 0,
-      tts: new inference.TTS({ model: "cartesia/sonic-3" }),
     });
     await session.start({
       agent: new voice.Agent({ instructions: "Telephony capture agent." }),
@@ -209,7 +216,9 @@ export default defineAgent({
 
     if (!firstAnswered) {
       log("Neither phone answered");
-      await safeSay(session, "Neither party answered the call. Goodbye.");
+      await safeSay(session, "Neither party answered the call. Goodbye.", {
+        audio: wavToAudioFrames(NO_ANSWER_AUDIO),
+      });
       await setRoomMetadata(room.name!, { announced: false, error: "no_answer" });
       ctx.shutdown();
       return;
@@ -229,7 +238,9 @@ export default defineAgent({
 
     if (!secondId) {
       log("Second phone didn't answer");
-      await safeSay(session, "The other party did not answer. Goodbye.");
+      await safeSay(session, "The other party did not answer. Goodbye.", {
+        audio: wavToAudioFrames(SECOND_NO_ANSWER_AUDIO),
+      });
       await setRoomMetadata(room.name!, { announced: false, error: "second_no_answer" });
       ctx.shutdown();
       return;
@@ -262,7 +273,9 @@ export default defineAgent({
         retryCount++;
         const missing = ["caller_a", "caller_b"].filter((c) => !consentedCallers.has(c));
         log(`Consent incomplete (${consentedCallers.size}/2) — retry ${retryCount}/${MAX_DTMF_RETRIES}, waiting: ${missing.join(", ")}`);
-        await safeSay(session, "We haven't received consent from all parties. Please press any key on your phone to consent.");
+        await safeSay(session, "We haven't received consent from all parties. Please press any key on your phone to consent.", {
+          audio: wavToAudioFrames(CONSENT_RETRY_AUDIO),
+        });
         lastPromptAt = Date.now();
       }
       await new Promise((r) => setTimeout(r, 500));
@@ -270,7 +283,9 @@ export default defineAgent({
 
     if (consentedCallers.size < 2) {
       log(`Consent timeout — ${consentedCallers.size}/2 (${[...consentedCallers].join(", ")})`);
-      await safeSay(session, "Consent was not received from both parties. This call is ending.");
+      await safeSay(session, "Consent was not received from both parties. This call is ending.", {
+        audio: wavToAudioFrames(CONSENT_TIMEOUT_AUDIO),
+      });
       await setRoomMetadata(room.name!, {
         announced: false,
         error: "consent_timeout",
@@ -291,7 +306,9 @@ export default defineAgent({
 
     if (!written) {
       log("CRITICAL: metadata write failed");
-      await safeSay(session, "A system error occurred. This call will end.");
+      await safeSay(session, "A system error occurred. This call will end.", {
+        audio: wavToAudioFrames(SYSTEM_ERROR_AUDIO),
+      });
       ctx.shutdown();
       return;
     }
