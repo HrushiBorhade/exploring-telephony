@@ -1,6 +1,6 @@
 import { Router } from "express";
 import * as dbq from "@repo/db";
-import { audioQueue } from "@repo/queues";
+import { audioQueue, csvQueue } from "@repo/queues";
 import { roomService } from "../lib/livekit";
 import { registry } from "../metrics";
 import { activeCaptures } from "../services/state";
@@ -54,17 +54,54 @@ router.get("/health", async (_req, res) => {
     // LiveKit down is degraded but not fatal — calls won't work but API still serves data
   }
 
-  const status = allOk ? "ok" : "degraded";
+  // Check for stale captures (stuck in calling/active for > 5 minutes)
+  let staleCaptures = 0;
+  try {
+    const stale = await dbq.findStaleCaptures();
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    staleCaptures = stale.filter((c) => {
+      const created = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+      return created < fiveMinutesAgo;
+    }).length;
+  } catch {}
+
+  // Queue health metrics (BullMQ audio + csv queues)
+  let queueHealth = {
+    audio: { waiting: 0, active: 0, failed: 0 },
+    csv: { waiting: 0, active: 0, failed: 0 },
+  };
+  try {
+    const [aw, aa, af, cw, ca, cf] = await Promise.all([
+      audioQueue.getWaitingCount(),
+      audioQueue.getActiveCount(),
+      audioQueue.getFailedCount(),
+      csvQueue.getWaitingCount(),
+      csvQueue.getActiveCount(),
+      csvQueue.getFailedCount(),
+    ]);
+    queueHealth = {
+      audio: { waiting: aw, active: aa, failed: af },
+      csv: { waiting: cw, active: ca, failed: cf },
+    };
+  } catch {}
+
+  // Determine overall status:
+  // - DB or Redis down → 503 "degraded"
+  // - Stale captures or high queue failures → 200 "degraded" (system works but needs attention)
+  const isDegraded = staleCaptures > 0 || queueHealth.audio.failed > 10;
+  const status = allOk ? (isDegraded ? "degraded" : "ok") : "degraded";
   const httpCode = allOk ? 200 : 503;
 
-  if (!allOk) {
-    logger.warn({ checks }, "[HEALTH] Service degraded");
+  if (!allOk || isDegraded) {
+    logger.warn({ checks, staleCaptures, queueHealth }, "[HEALTH] Service degraded");
   }
 
   res.status(httpCode).json({
     status,
     uptime: Math.round(process.uptime()),
     activeCaptures: activeCaptures.size,
+    staleCaptures,
+    queueHealth,
     checks,
   });
 });
