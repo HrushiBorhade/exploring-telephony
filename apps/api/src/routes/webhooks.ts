@@ -50,6 +50,12 @@ router.post("/livekit/webhook", async (req, res) => {
           try {
             await startEgressForCapture(capture, roomName);
             logger.info(`[WEBHOOK] Egress started for ${roomName}`);
+
+            // Signal agent that egress is recording — agent polls for this before playing announcement
+            await roomService.updateRoomMetadata(roomName, JSON.stringify({
+              ...parsed,
+              egressStarted: true,
+            })).catch((e: any) => logger.warn(`[WEBHOOK] Failed to set egressStarted metadata:`, e.message));
           } catch (err: any) {
             logger.error(`[WEBHOOK] Failed to start egress:`, err.message);
           }
