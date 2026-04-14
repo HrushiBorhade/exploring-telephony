@@ -32,7 +32,8 @@ audioWorker.on("failed", async (job, err) => {
     try {
       const dbq = await import("@repo/db");
       await dbq.updateCapture(captureId, { status: "failed" });
-      logger.info({ captureId }, "Capture marked as failed (all retries exhausted)");
+      await dbq.releaseThemeSample(captureId).catch(() => {});
+      logger.info({ captureId }, "Capture marked as failed, theme sample released (all retries exhausted)");
     } catch (dbErr: any) {
       logger.error({ captureId, error: dbErr.message }, "Failed to update capture status to failed");
     }
