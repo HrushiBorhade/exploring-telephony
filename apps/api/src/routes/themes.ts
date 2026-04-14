@@ -37,6 +37,10 @@ router.post("/api/captures/themed", requireAuth, async (req: AuthRequest, res) =
     res.status(400).json({ error: "No phone number on your account" });
     return;
   }
+  if (phoneB === req.userPhone) {
+    res.status(400).json({ error: "Cannot call your own number" });
+    return;
+  }
 
   try {
     const languages = await dbq.getLanguages(req.userId!);

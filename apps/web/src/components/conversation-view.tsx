@@ -249,7 +249,7 @@ export function ConversationView({ utterancesA, utterancesB, phoneA, phoneB, onE
   );
 }
 
-export function parseUtterances(raw: string | null | undefined, captureId: string, proxyAudioUrl: (url: string, id: string) => string): Utterance[] {
+export function parseUtterances(raw: string | null | undefined, captureId: string): Utterance[] {
   if (!raw) return [];
   try {
     const arr = JSON.parse(raw);
@@ -259,7 +259,7 @@ export function parseUtterances(raw: string | null | undefined, captureId: strin
       text: u.text ?? u.content ?? "",
       language: u.language ?? "en",
       emotion: u.emotion ?? "neutral",
-      audioUrl: u.audioUrl ? proxyAudioUrl(u.audioUrl, captureId) : "",
+      audioUrl: u.audioUrl ?? "",
       flags: u.flags ?? [],
     }));
   } catch {
