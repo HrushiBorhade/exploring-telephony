@@ -18,6 +18,7 @@
     "bullmq": "*",
     "csv-stringify": "*",
     "dotenv": "*",
+    "openai": "^6.34.0",
     "pino": "*",
     "pino-pretty": "*",
     "zod": "*"

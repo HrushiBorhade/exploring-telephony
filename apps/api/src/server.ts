@@ -9,7 +9,6 @@ import { setupMiddleware } from "./middleware/setup";
 // Routes
 import captureRoutes from "./routes/captures";
 import webhookRoutes from "./routes/webhooks";
-import recordingRoutes from "./routes/recordings";
 import healthRoutes from "./routes/health";
 import profileRoutes from "./routes/profile";
 import themeRoutes from "./routes/themes";
@@ -56,7 +55,6 @@ setupMiddleware(app);
 // Mount routes
 app.use(captureRoutes);
 app.use(webhookRoutes);
-app.use(recordingRoutes);
 app.use(healthRoutes);
 app.use(profileRoutes);
 app.use(themeRoutes);
