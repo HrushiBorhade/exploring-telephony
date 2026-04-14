@@ -13,6 +13,9 @@ const audioWorker = new Worker<AudioJobData>("audio-processing", processAudio, {
     max: 10,
     duration: 60_000,
   },
+  lockDuration: 300_000,       // 5 min lock — if job doesn't report progress, considered stalled
+  stalledInterval: 60_000,     // Check for stalled jobs every 60s
+  maxStalledCount: 1,          // After 1 stall, move to failed
 });
 
 audioWorker.on("completed", (job) => {
