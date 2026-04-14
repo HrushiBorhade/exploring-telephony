@@ -98,34 +98,39 @@ ${formatUtterances(utterancesA, "a")}
 Participant B:
 ${formatUtterances(utterancesB, "b")}`;
 
-    const response = await getGenAI().models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: { parts: [{ text: prompt }] },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            flags: {
-              type: Type.ARRAY,
-              description: "List of content flags found in utterances",
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  participant: { type: Type.STRING, description: "a or b" },
-                  index: { type: Type.NUMBER, description: "Utterance index (0-based)" },
-                  type: { type: Type.STRING, enum: ["pii", "abuse", "confidential"] },
-                  severity: { type: Type.STRING, enum: ["high", "medium", "low"] },
-                  description: { type: Type.STRING, description: "Brief explanation of the flag" },
+    const response = await Promise.race([
+      getGenAI().models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              flags: {
+                type: Type.ARRAY,
+                description: "List of content flags found in utterances",
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    participant: { type: Type.STRING, description: "a or b" },
+                    index: { type: Type.NUMBER, description: "Utterance index (0-based)" },
+                    type: { type: Type.STRING, enum: ["pii", "abuse", "confidential"] },
+                    severity: { type: Type.STRING, enum: ["high", "medium", "low"] },
+                    description: { type: Type.STRING, description: "Brief explanation of the flag" },
+                  },
+                  required: ["participant", "index", "type", "severity", "description"],
                 },
-                required: ["participant", "index", "type", "severity", "description"],
               },
             },
+            required: ["flags"],
           },
-          required: ["flags"],
         },
-      },
-    });
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Moderation timeout after 60s")), 60_000),
+      ),
+    ]);
 
     const result: ModerationResult = JSON.parse(response.text!);
 

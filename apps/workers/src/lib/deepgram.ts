@@ -123,12 +123,17 @@ export async function transcribeWithDeepgram(
 ): Promise<TranscriptionResult> {
   logger.info({ sizeKB: (audioBuffer.length / 1024).toFixed(1), mimeType }, "[DEEPGRAM] Starting transcription");
 
-  const data: any = await getDeepgram().listen.v1.media.transcribeFile(audioBuffer, {
-    model: "nova-3",
-    smart_format: true,
-    punctuate: true,
-    language: "hi",
-  });
+  const data: any = await Promise.race([
+    getDeepgram().listen.v1.media.transcribeFile(audioBuffer, {
+      model: "nova-3",
+      smart_format: true,
+      punctuate: true,
+      language: "hi",
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Deepgram transcription timeout after 120s")), 120_000),
+    ),
+  ]);
 
   // Get word-level timestamps (always returned, frame-accurate)
   const rawWords: DGWord[] = data?.results?.channels?.[0]?.alternatives?.[0]?.words ?? [];
