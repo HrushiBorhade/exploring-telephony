@@ -138,9 +138,10 @@ export async function findStaleCaptures() {
 
 /**
  * Atomically set a recording URL and check if all 3 recordings are present.
- * Returns the row ONLY if this update caused all 3 to become non-null.
- * This prevents the race condition where 3 simultaneous egress_ended webhooks
- * could each read a partially-filled row.
+ * Uses a CTE to UPDATE + check in a single SQL statement, eliminating the
+ * TOCTOU race where concurrent webhooks could each see a partially-filled row.
+ * Returns the row ONLY if this update caused all 3 to become non-null
+ * AND status is still "ended" or "active" (prevents duplicate enqueue).
  */
 export async function setRecordingUrlAndCheckReady(
   id: string,
@@ -148,29 +149,60 @@ export async function setRecordingUrlAndCheckReady(
   url: string,
   extraFields?: Partial<typeof schema.captures.$inferInsert>,
 ) {
-  const updates: Record<string, any> = { [field]: url, ...extraFields };
+  const columnMap: Record<string, string> = {
+    recordingUrl: "recording_url",
+    recordingUrlA: "recording_url_a",
+    recordingUrlB: "recording_url_b",
+  };
+  const column = columnMap[field];
 
-  await db.update(schema.captures).set(updates).where(eq(schema.captures.id, id));
+  // Build extra SET fragments
+  const extraSetParts: any[] = [];
+  if (extraFields?.durationSeconds !== undefined) {
+    extraSetParts.push(sql`, duration_seconds = ${extraFields.durationSeconds}`);
+  }
+  if (extraFields?.endedAt !== undefined) {
+    extraSetParts.push(sql`, ended_at = ${extraFields.endedAt}`);
+  }
 
-  // Atomic check: only return the row if ALL 3 recording URLs are now present
-  const [row] = await db
-    .select()
-    .from(schema.captures)
-    .where(
-      and(
-        eq(schema.captures.id, id),
-        sql`${schema.captures.recordingUrl} IS NOT NULL`,
-        sql`${schema.captures.recordingUrlA} IS NOT NULL`,
-        sql`${schema.captures.recordingUrlB} IS NOT NULL`,
-        // Trigger if status is "ended" OR "active" (egress_ended webhooks can
-        // arrive before participant_left sets status to "ended")
-        // Excludes "processing"/"completed" to prevent duplicate enqueue
-        sql`${schema.captures.status} IN ('ended', 'active')`,
-      ),
+  const extraSql = extraSetParts.length > 0
+    ? sql.join(extraSetParts, sql``)
+    : sql``;
+
+  // Single atomic CTE: UPDATE then check all 3 URLs in one statement
+  const rows = await db.execute(sql`
+    WITH updated AS (
+      UPDATE captures_v2
+      SET ${sql.raw(column)} = ${url} ${extraSql}
+      WHERE id = ${id}
+      RETURNING *
     )
-    .limit(1);
+    SELECT * FROM updated
+    WHERE recording_url IS NOT NULL
+      AND recording_url_a IS NOT NULL
+      AND recording_url_b IS NOT NULL
+      AND status IN ('ended', 'active')
+  `);
 
-  return row ?? null;
+  const row = Array.isArray(rows) && rows.length > 0 ? (rows[0] as Record<string, any>) : null;
+  if (!row) return null;
+
+  // Map snake_case columns from raw SQL to camelCase for callers
+  return {
+    id: row.id,
+    userId: row.user_id,
+    roomName: row.room_name,
+    egressId: row.egress_id,
+    recordingUrl: row.recording_url,
+    recordingUrlA: row.recording_url_a,
+    recordingUrlB: row.recording_url_b,
+    status: row.status,
+    durationSeconds: row.duration_seconds,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    createdAt: row.created_at,
+    verified: row.verified,
+  };
 }
 
 export async function getSessionByToken(token: string) {
