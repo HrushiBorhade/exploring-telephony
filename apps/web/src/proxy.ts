@@ -7,12 +7,12 @@ export function proxy(request: NextRequest) {
 
   // Already logged in → skip the login page
   if (pathname === "/login" && sessionCookie) {
-    return NextResponse.redirect(new URL("/capture", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   // Not logged in → redirect to login
   if (
-    (pathname.startsWith("/capture") || pathname.startsWith("/settings") || pathname.startsWith("/onboarding") || pathname.startsWith("/auth-callback")) &&
+    (pathname.startsWith("/dashboard") || pathname.startsWith("/capture") || pathname.startsWith("/settings") || pathname.startsWith("/onboarding") || pathname.startsWith("/auth-callback")) &&
     !sessionCookie
   ) {
     return NextResponse.redirect(new URL("/login", request.url));
@@ -22,5 +22,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/capture/:path*", "/settings", "/onboarding", "/auth-callback"],
+  matcher: ["/login", "/dashboard/:path*", "/capture/:path*", "/settings", "/onboarding", "/auth-callback"],
 };

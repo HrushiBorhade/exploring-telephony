@@ -81,14 +81,26 @@ export function LoginForm({
     setLoading(true);
     const digits = phone.replace(/\D/g, "");
     const { error } = await authClient.phoneNumber.verify({ phoneNumber: `+91${digits}`, code });
-    setLoading(false);
     if (error) {
+      setLoading(false);
       toast.error(error.message ?? "Invalid code");
       setOtp("");
       verifyingRef.current = false;
       return;
     }
-    router.push("/auth-callback");
+    // OTP verified — keep loading=true so UI never shows a "dead" state.
+    // Fetch profile to determine destination, then navigate directly.
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/profile`, { credentials: "include" });
+      if (res.ok) {
+        const profile = await res.json();
+        router.replace(profile.onboardingCompleted ? "/dashboard" : "/onboarding");
+      } else {
+        router.replace("/onboarding");
+      }
+    } catch {
+      router.replace("/auth-callback");
+    }
     verifyingRef.current = false;
   }
 
