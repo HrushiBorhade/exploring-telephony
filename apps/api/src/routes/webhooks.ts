@@ -226,25 +226,31 @@ router.post("/livekit/webhook", async (req, res) => {
 
         // If this webhook completed the set → enqueue processing job
         if (ready) {
-          logger.info({ captureId: row.id }, "[WEBHOOK] All 3 recordings ready — enqueueing processing job");
+          // Double-check status hasn't already moved to processing (another webhook beat us)
+          const current = await dbq.getCapture(ready.id);
+          if (current && (current.status === "processing" || current.status === "completed")) {
+            logger.warn({ captureId: ready.id, currentStatus: current.status }, "[WEBHOOK] Capture already processing/completed, skipping enqueue");
+          } else {
+            logger.info({ captureId: ready.id }, "[WEBHOOK] All 3 recordings ready — enqueueing processing job");
 
-          await audioQueue.add(
-            "process-audio",
-            {
-              captureId: ready.id,
-              mixedUrl: ready.recordingUrl!,
-              callerAUrl: ready.recordingUrlA!,
-              callerBUrl: ready.recordingUrlB!,
-            },
-            { jobId: `process-${ready.id}` },
-          );
+            await audioQueue.add(
+              "process-audio",
+              {
+                captureId: ready.id,
+                mixedUrl: ready.recordingUrl ?? (ready as any).recording_url,
+                callerAUrl: ready.recordingUrlA ?? (ready as any).recording_url_a,
+                callerBUrl: ready.recordingUrlB ?? (ready as any).recording_url_b,
+              },
+              { jobId: `process-${ready.id}` },
+            );
 
-          await dbq.updateCapture(ready.id, { status: "processing" });
+            await dbq.updateCapture(ready.id, { status: "processing" });
 
-          // Mark theme sample as completed
-          await dbq.completeThemeSample(ready.id).catch(() => {});
+            // Mark theme sample as completed
+            await dbq.completeThemeSample(ready.id).catch(() => {});
 
-          setTimeout(() => activeCaptures.delete(ready.id), 10_000);
+            setTimeout(() => activeCaptures.delete(ready.id), 10_000);
+          }
         }
       }
     }
