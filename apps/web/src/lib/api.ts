@@ -4,25 +4,6 @@ import type { Capture, CaptureStats, PaginatedResponse, ProfileResponse } from "
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
-/**
- * Rewrite an S3 URL to go through the API presigned-URL proxy.
- * DB stores canonical S3 URLs; the browser can't access them directly.
- * The proxy returns a 302 redirect to a short-lived presigned URL.
- *
- * Input:  https://bucket.s3.region.amazonaws.com/captures/{captureId}/participant-a/clips/001.mp3
- * Output: {API}/api/captures/{captureId}/audio/participant-a/clips/001.mp3
- */
-export function proxyAudioUrl(s3Url: string, captureId: string): string {
-  // Local dev: S3 bucket is private, route through API proxy at localhost:8080
-  // Production: S3 bucket has public-read on captures/*, use S3 URL directly
-  if (!API.includes("localhost")) return s3Url;
-
-  const marker = `captures/${captureId}/`;
-  const idx = s3Url.indexOf(marker);
-  if (idx === -1) return s3Url;
-  const key = s3Url.slice(idx + marker.length);
-  return `${API}/api/captures/${captureId}/audio/${key}`;
-}
 
 // ── Query keys ──────────────────────────────────────────────────────
 
@@ -96,17 +77,22 @@ export function useCapture(id: string) {
     queryKey: captureKeys.detail(id),
     queryFn: () => fetchJson<Capture>(`${API}/api/captures/${id}`),
     refetchOnWindowFocus: false,
-    // Poll faster when call is active; keep polling on "completed" until all recordings arrive
+    // Poll faster during active call and processing phases
     refetchInterval: (query) => {
       const data = query.state.data;
       if (!data) return 5_000;
+      // Fast poll during active call and processing phases
       if (data.status === "calling" || data.status === "active" || data.status === "processing") return 2_000;
-      if (data.status === "ended") return data.startedAt ? 2_000 : false;
+      // "ended" = waiting for egress uploads. Always poll — don't gate on startedAt.
+      if (data.status === "ended") return 2_000;
+      // "completed" — keep polling until all data fields arrive
       if (data.status === "completed") {
         const allRecordings = data.recordingUrl && data.recordingUrlA && data.recordingUrlB;
         const allTranscripts = data.transcriptA && data.transcriptB;
         return (allRecordings && allTranscripts) ? false : 2_000;
       }
+      // Terminal states — stop polling
+      if (data.status === "failed" || data.status === "created") return false;
       return 5_000;
     },
   });
