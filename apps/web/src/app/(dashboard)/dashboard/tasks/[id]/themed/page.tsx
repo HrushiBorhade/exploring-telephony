@@ -31,7 +31,6 @@ import {
   useThemeSample,
   useValidateThemeForm,
   useResendWhatsApp,
-  proxyAudioUrl,
 } from "@/lib/api";
 import { ConversationView, parseUtterances, participantColor } from "@/components/conversation-view";
 import type { Utterance } from "@/lib/types";
@@ -199,33 +198,29 @@ export default function ThemedCaptureDetail() {
 
   // ── Derived values ──
   const status = capture?.status ?? "created";
+  const hasRecordings = !!(capture?.recordingUrl || capture?.recordingUrlA || capture?.recordingUrlB);
+  const callFailed = status === "failed" || (status === "ended" && !hasRecordings);
   const isPreCall = status === "created";
-  const isCallActive = status === "calling" || status === "active";
-  const isPostCall = ["ended", "processing", "completed"].includes(status);
-  const canStartCall = sharedConfirm && understoodConfirm && isPreCall;
+  const isCalling = status === "calling";
+  const isRecording = status === "active";
+  const isCallActive = isCalling || isRecording;
+  const isPostCall = !callFailed && ["ended", "processing", "completed"].includes(status);
+  const canStartCall = sharedConfirm && understoodConfirm && (isPreCall || callFailed);
   const formFields = theme ? Object.keys(theme.data) : [];
   const publicUrl = theme?.publicToken
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/t/${theme.publicToken}`
     : null;
 
-  const cfg = statusConfig[status] ?? statusConfig.created;
+  const cfg = callFailed
+    ? statusConfig.failed
+    : (statusConfig[status] ?? statusConfig.created);
 
-  const recordingUrl = useMemo(
-    () => (capture?.recordingUrl ? proxyAudioUrl(capture.recordingUrl, id) : null),
-    [capture?.recordingUrl, id],
-  );
-  const recordingUrlA = useMemo(
-    () => (capture?.recordingUrlA ? proxyAudioUrl(capture.recordingUrlA, id) : null),
-    [capture?.recordingUrlA, id],
-  );
-  const recordingUrlB = useMemo(
-    () => (capture?.recordingUrlB ? proxyAudioUrl(capture.recordingUrlB, id) : null),
-    [capture?.recordingUrlB, id],
-  );
+  const recordingUrl = capture?.recordingUrl ?? null;
+  const recordingUrlA = capture?.recordingUrlA ?? null;
+  const recordingUrlB = capture?.recordingUrlB ?? null;
 
-  // Parse transcripts using shared parseUtterances (includes audioUrl proxying)
-  const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id, proxyAudioUrl), [capture?.transcriptA, id]);
-  const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id, proxyAudioUrl), [capture?.transcriptB, id]);
+  const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id), [capture?.transcriptA, id]);
+  const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id), [capture?.transcriptB, id]);
   const hasUtterances = utterancesA.length > 0 || utterancesB.length > 0;
 
   // ── Handlers ──
@@ -721,6 +716,36 @@ export default function ThemedCaptureDetail() {
                 </Card>
               </motion.div>
             </>
+          )}
+
+          {/* ══════════════════════════════════════════
+              Call Failed — retry option
+             ══════════════════════════════════════════ */}
+          {callFailed && (
+            <motion.div variants={fadeUp}>
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 sm:p-6 space-y-3 text-center">
+                <p className="text-sm font-medium text-destructive">
+                  Call Failed
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  One or both phones didn&apos;t answer, or the call was disconnected before recording could start.
+                </p>
+                <Button
+                  onClick={() => startMutation.mutate()}
+                  disabled={startMutation.isPending}
+                  className="gap-2"
+                >
+                  {startMutation.isPending ? (
+                    <>
+                      <LoaderCircle className="size-4 animate-spin" />
+                      Retrying...
+                    </>
+                  ) : (
+                    "Retry Call"
+                  )}
+                </Button>
+              </div>
+            </motion.div>
           )}
 
           {/* ══════════════════════════════════════════
