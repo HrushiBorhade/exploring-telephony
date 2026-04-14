@@ -17,7 +17,7 @@ import {
   defineAgent,
   voice,
 } from "@livekit/agents";
-import { SipClient, RoomServiceClient } from "livekit-server-sdk";
+import { SipClient, RoomServiceClient, TrackType } from "livekit-server-sdk";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -134,6 +134,22 @@ async function setRoomMetadata(roomName: string, metadata: Record<string, unknow
   return false;
 }
 
+async function setParticipantMuted(roomName: string, identity: string, muted: boolean): Promise<void> {
+  try {
+    const participants = await getRoomClient().listParticipants(roomName);
+    const participant = participants.find(p => p.identity === identity);
+    if (!participant) return;
+
+    for (const track of participant.tracks) {
+      if (track.type === TrackType.AUDIO && track.sid) {
+        await getRoomClient().mutePublishedTrack(roomName, identity, track.sid, muted);
+      }
+    }
+  } catch (err: any) {
+    console.error(`[AGENT] ${muted ? "Mute" : "Unmute"} ${identity} failed: ${err.message}`);
+  }
+}
+
 // ── Agent ──
 export default defineAgent({
   prewarm: async (_proc: JobProcess) => {
@@ -225,6 +241,10 @@ export default defineAgent({
     }
 
     log(`${firstAnswered.answeredId} answered first — playing hold`);
+
+    // Mute first answerer so they don't broadcast during hold
+    await setParticipantMuted(room.name!, firstAnswered.answeredId, true);
+
     fireSay(session, "Please wait for the other party.", {
       allowInterruptions: true,
       audio: wavToAudioFrames(PLEASE_WAIT_AUDIO),
@@ -247,6 +267,14 @@ export default defineAgent({
     }
 
     log(`Both answered: ${firstAnswered.answeredId}, ${secondId}`);
+
+    // Mute both participants during consent/announcement phase
+    // They should only hear the agent's prompts, not each other
+    await Promise.all([
+      setParticipantMuted(room.name!, "caller_a", true),
+      setParticipantMuted(room.name!, "caller_b", true),
+    ]);
+    log("Both participants muted for consent phase");
 
     // Brief pause after both join (let audio settle)
     await new Promise((r) => setTimeout(r, 1000));
@@ -323,6 +351,13 @@ export default defineAgent({
       allowInterruptions: false,
       audio: wavToAudioFrames(ANNOUNCE_AUDIO),
     });
+
+    // Unmute both participants — conversation can now begin
+    await Promise.all([
+      setParticipantMuted(room.name!, "caller_a", false),
+      setParticipantMuted(room.name!, "caller_b", false),
+    ]);
+    log("Both participants unmuted — conversation active");
 
     log("Done — callers stay connected, egress recording");
     ctx.shutdown();
