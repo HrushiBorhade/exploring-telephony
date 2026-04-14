@@ -15,7 +15,7 @@ import { useState, useMemo, useCallback, memo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { pageStagger, pageFadeUp } from "@/lib/motion";
 import { toast } from "sonner";
-import { useCapture, useStartCapture, useEndCapture, useUpdateTranscript, useVerifyCapture, proxyAudioUrl } from "@/lib/api";
+import { useCapture, useStartCapture, useEndCapture, useUpdateTranscript, useVerifyCapture } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import type { Utterance, ModerationFlag } from "@/lib/types";
 
@@ -42,11 +42,11 @@ const emotionClassName: Record<string, string> = {
 };
 
 const statusConfig: Record<string, { label: string; badgeClass: string; dot: string; pulse?: boolean }> = {
-  created:    { label: "Ready",            badgeClass: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",          dot: "bg-zinc-400" },
-  calling:    { label: "Calling...",       badgeClass: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-900",    dot: "bg-yellow-500 dark:bg-yellow-400", pulse: true },
-  active:     { label: "In Call",          badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
-  ended:      { label: "Processing...",    badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",          dot: "bg-blue-500 dark:bg-blue-400", pulse: true },
-  processing: { label: "Transcribing...",  badgeClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900",    dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
+  created:    { label: "Ready",               badgeClass: "bg-zinc-100 text-zinc-600 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",          dot: "bg-zinc-400" },
+  calling:    { label: "Dialing Phones...",   badgeClass: "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300 dark:border-yellow-900",    dot: "bg-yellow-500 dark:bg-yellow-400", pulse: true },
+  active:     { label: "Recording",           badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400", pulse: true },
+  ended:      { label: "Saving Recordings...", badgeClass: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",          dot: "bg-blue-500 dark:bg-blue-400", pulse: true },
+  processing: { label: "Transcribing...",     badgeClass: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-900",    dot: "bg-purple-500 dark:bg-purple-400", pulse: true },
   completed:       { label: "Recording Ready",  badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400" },
   pending_review:  { label: "Pending Review",  badgeClass: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900",       dot: "bg-amber-500 dark:bg-amber-400" },
   verified:        { label: "Verified",         badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900", dot: "bg-emerald-500 dark:bg-emerald-400" },
@@ -88,7 +88,7 @@ function parseUtterances(raw: string | null | undefined, captureId: string): Utt
       text: u.text ?? u.content ?? "",
       language: u.language ?? "en",
       emotion: u.emotion ?? "neutral",
-      audioUrl: u.audioUrl ? proxyAudioUrl(u.audioUrl, captureId) : "",
+      audioUrl: u.audioUrl ?? "",
       flags: u.flags ?? [],
     }));
   } catch {
@@ -371,29 +371,17 @@ export default function CaptureDetailPage() {
     : "completed"
     : capture?.status ?? "created";
 
-  const recordingUrl = useMemo(
-    () => capture?.recordingUrl ? proxyAudioUrl(capture.recordingUrl, id) : null,
-    [capture?.recordingUrl, id]
-  );
-  const recordingUrlA = useMemo(
-    () => capture?.recordingUrlA ? proxyAudioUrl(capture.recordingUrlA, id) : null,
-    [capture?.recordingUrlA, id]
-  );
-  const recordingUrlB = useMemo(
-    () => capture?.recordingUrlB ? proxyAudioUrl(capture.recordingUrlB, id) : null,
-    [capture?.recordingUrlB, id]
-  );
-  const datasetCsvProxyUrl = useMemo(
-    () => capture?.datasetCsvUrl ? proxyAudioUrl(capture.datasetCsvUrl, id) : null,
-    [capture?.datasetCsvUrl, id]
-  );
+  const recordingUrl = capture?.recordingUrl ?? null;
+  const recordingUrlA = capture?.recordingUrlA ?? null;
+  const recordingUrlB = capture?.recordingUrlB ?? null;
+  const datasetCsvUrl = capture?.datasetCsvUrl ?? null;
 
   const loadCsv = useCallback(async () => {
-    if (!datasetCsvProxyUrl) return;
+    if (!datasetCsvUrl) return;
     setCsvLoading(true);
     try {
-      const url = `${datasetCsvProxyUrl}${datasetCsvProxyUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
-      const res = await fetch(url, { credentials: "include", redirect: "follow" });
+      const url = `${datasetCsvUrl}${datasetCsvUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+      const res = await fetch(url);
       const text = await res.text();
       const rows = text.split("\n").filter(Boolean).map((row) => {
         const cells: string[] = [];
@@ -410,7 +398,7 @@ export default function CaptureDetailPage() {
       setCsvData(rows);
     } catch { setCsvData(null); }
     finally { setCsvLoading(false); }
-  }, [datasetCsvProxyUrl]);
+  }, [datasetCsvUrl]);
 
   const handleEditUtterance = useCallback((participant: "a" | "b", index: number, text: string) => {
     const key = `${participant}-${index}`;
@@ -513,7 +501,7 @@ export default function CaptureDetailPage() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          {isCompleted && datasetCsvProxyUrl && (
+          {isCompleted && datasetCsvUrl && (
             <Sheet>
               <SheetTrigger render={<Button variant="outline" size="sm" onClick={loadCsv} />}>
                 <Table2 className="size-3.5" />
@@ -566,7 +554,7 @@ export default function CaptureDetailPage() {
                       Regenerating CSV...
                     </Button>
                   ) : (
-                    <Button nativeButton={false} render={<a href={datasetCsvProxyUrl} download />}>
+                    <Button nativeButton={false} render={<a href={datasetCsvUrl} download />}>
                       <Download className="size-3.5" />
                       Download CSV
                     </Button>
@@ -638,9 +626,9 @@ export default function CaptureDetailPage() {
 
                 {capture.status === "calling" && (
                   <div className="p-4 sm:p-6 space-y-3">
-                    <p className="text-center text-xs font-medium text-yellow-700 dark:text-yellow-400 uppercase tracking-widest">Dialling</p>
+                    <p className="text-center text-xs font-medium text-yellow-700 dark:text-yellow-400 uppercase tracking-widest">Dialing Phones</p>
                     <BarVisualizer state="connecting" demo barCount={18} minHeight={15} maxHeight={90} centerAlign className="bg-transparent border-0 h-20 sm:h-24 rounded-none" />
-                    <p className="text-center text-[11px] sm:text-xs text-muted-foreground truncate">Calling {capture.phoneA} and {capture.phoneB}{"\u2026"}</p>
+                    <p className="text-center text-[11px] sm:text-xs text-muted-foreground truncate">Connecting {capture.phoneA} and {capture.phoneB} — waiting for consent</p>
                   </div>
                 )}
 
@@ -662,8 +650,10 @@ export default function CaptureDetailPage() {
               className="rounded-xl border border-border p-6 sm:p-8 text-center space-y-3"
             >
               <p className="text-xs font-medium text-red-700 dark:text-red-400 uppercase tracking-widest">Call Failed</p>
-              <p className="text-sm text-muted-foreground">One or both phones didn&apos;t answer. Check the numbers and try again.</p>
-              <Button size="sm" variant="outline" onClick={() => router.push("/dashboard/tasks")}>Back to Dashboard</Button>
+              <p className="text-sm text-muted-foreground">
+                The call could not be completed. This may be due to phones not answering, consent not being given, or a connection issue.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => router.push("/dashboard/tasks")}>Back to Tasks</Button>
             </motion.div>
           )}
 
@@ -675,13 +665,13 @@ export default function CaptureDetailPage() {
             >
               <div className="p-4 sm:p-6 space-y-3">
                 <p className="text-center text-xs font-medium text-purple-700 dark:text-purple-400 uppercase tracking-widest">
-                  {capture.status === "processing" ? "Transcribing & Slicing" : "Uploading Recordings"}
+                  {capture.status === "processing" ? "Transcribing & Slicing" : "Saving Recordings"}
                 </p>
                 <BarVisualizer state="thinking" demo barCount={18} minHeight={10} maxHeight={70} centerAlign className="bg-transparent border-0 h-20 sm:h-24 rounded-none" />
                 <p className="text-center text-[11px] sm:text-xs text-muted-foreground">
                   {capture.status === "processing"
-                    ? "Gemini is transcribing audio and generating clips\u2026"
-                    : "Uploading recordings to storage \u2014 usually 10\u201330s"}
+                    ? "Generating transcripts, audio clips and dataset CSV\u2026"
+                    : "Uploading recordings to storage \u2014 usually takes 10\u201330s"}
                 </p>
               </div>
             </motion.div>
