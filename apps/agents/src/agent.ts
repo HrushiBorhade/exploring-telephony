@@ -342,8 +342,27 @@ export default defineAgent({
     }
 
     // ── Phase 6: Wait for egress initialization ──
-    log("Waiting 3s for egress initialization...");
-    await new Promise((r) => setTimeout(r, 3000));
+    // Poll for egress to start (the webhook/API starts egress when it sees announced:true).
+    // Max wait 5s — if egress hasn't started by then, play announcement anyway
+    // (better to capture most of the conversation than wait indefinitely).
+    log("Waiting for egress to initialize...");
+    const egressDeadline = Date.now() + 5000;
+    let egressConfirmed = false;
+    while (Date.now() < egressDeadline) {
+      try {
+        const rooms = await getRoomClient().listRooms([room.name!]);
+        const meta = rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {};
+        if (meta.egressStarted === true) {
+          egressConfirmed = true;
+          log("Egress confirmed started");
+          break;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    if (!egressConfirmed) {
+      log("Egress not confirmed within 5s — proceeding with announcement anyway");
+    }
 
     // ── Phase 7: Play announcement ──
     log("Playing announcement");
