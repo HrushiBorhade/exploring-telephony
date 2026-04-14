@@ -41,11 +41,6 @@ function OnboardingContent() {
   const searchParams = useSearchParams();
   const { data: profile, isLoading, isError } = useProfile();
 
-  // Auth error → back to login
-  useEffect(() => {
-    if (isError) router.replace("/login");
-  }, [isError, router]);
-
   const requestedStep = (searchParams.get("step") ?? "profile") as Step;
   const stepIndex = STEPS.indexOf(requestedStep);
   const currentStep = stepIndex >= 0 ? requestedStep : "profile";
@@ -54,6 +49,18 @@ function OnboardingContent() {
   // Height animation (ResizeObserver pattern)
   const [height, setHeight] = useState<number | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Auth error → back to login
+  useEffect(() => {
+    if (isError) router.replace("/login");
+  }, [isError, router]);
+
+  // Already onboarded → go to dashboard
+  useEffect(() => {
+    if (profile?.onboardingCompleted) {
+      router.replace("/dashboard");
+    }
+  }, [profile?.onboardingCompleted, router]);
 
   useEffect(() => {
     const el = contentRef.current;
@@ -80,7 +87,7 @@ function OnboardingContent() {
     if (nextIndex < STEPS.length) {
       goToStep(STEPS[nextIndex]);
     } else {
-      router.replace("/capture");
+      router.replace("/dashboard");
     }
   }, [currentIndex, goToStep, router]);
 
@@ -100,12 +107,6 @@ function OnboardingContent() {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (profile?.onboardingCompleted) {
-      router.replace("/capture");
-    }
-  }, [profile?.onboardingCompleted, router]);
 
   if (profile?.onboardingCompleted) {
     return null;
