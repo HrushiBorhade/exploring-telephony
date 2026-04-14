@@ -10,8 +10,13 @@ router.get("/metrics", async (_req, res) => {
   res.end(await registry.metrics());
 });
 
-router.get("/health", (_req, res) => {
-  res.json({ status: "ok", uptime: Math.round(process.uptime()), activeCaptures: activeCaptures.size });
+router.get("/health", async (_req, res) => {
+  try {
+    await dbq.ping();
+    res.json({ status: "ok", uptime: Math.round(process.uptime()), activeCaptures: activeCaptures.size });
+  } catch {
+    res.status(503).json({ status: "degraded", reason: "database unreachable", uptime: Math.round(process.uptime()) });
+  }
 });
 
 router.get("/ready", async (_req, res) => {
