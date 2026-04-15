@@ -191,7 +191,7 @@ export default function AdminCapturesPage() {
                 const isThemed = !!capture.themeSampleId;
                 const ds = getDisplayStatus(capture);
                 const cfg = statusConfig[ds] ?? statusConfig.created;
-                const dur = formatDuration(capture.durationSeconds);
+                const dur = ds === "failed" ? null : formatDuration(capture.durationSeconds);
 
                 return (
                   <TableRow

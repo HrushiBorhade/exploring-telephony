@@ -342,11 +342,9 @@ export default function TasksPage() {
                 <TableBody>
                   {captures.map((c, i) => {
                     const isThemed = !!c.themeSampleId;
-                    const callFailed =
-                      c.status === "ended" && !c.startedAt;
-                    const displayStatus = callFailed ? "failed" : getDisplayStatus(c);
+                    const displayStatus = getDisplayStatus(c);
                     const sc = statusConfig[displayStatus] ?? statusConfig.created;
-                    const dur = formatDuration(c.durationSeconds);
+                    const dur = displayStatus === "failed" ? null : formatDuration(c.durationSeconds);
 
                     return (
                       <TableRow

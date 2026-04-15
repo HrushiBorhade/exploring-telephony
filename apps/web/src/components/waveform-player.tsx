@@ -59,13 +59,22 @@ export function WaveformPlayer({
     navigator.clipboard.writeText(url).then(() => toast.success("URL copied"));
   }
 
-  function downloadAudio() {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = url.split("/").pop() || "recording.mp4";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  async function downloadAudio() {
+    try {
+      toast.info("Downloading...");
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = url.split("/").pop()?.split("?")[0] || "recording.mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error("Download failed — try right-clicking the player instead");
+    }
   }
 
   const hasLabel = label.length > 0;

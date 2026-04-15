@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   ArrowLeft,
   Copy,
@@ -10,6 +10,8 @@ import {
   RefreshCw,
   LoaderCircle,
   Info,
+  Table2,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { BarVisualizer } from "@/components/ui/bar-visualizer";
 import { WaveformPlayer } from "@/components/waveform-player";
 import { AdminCaptureBanner } from "@/components/admin-capture-banner";
@@ -31,9 +35,10 @@ import {
   useThemeSample,
   useValidateThemeForm,
   useResendWhatsApp,
+  useUpdateTranscript,
 } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
 import { ConversationView, parseUtterances, participantColor } from "@/components/conversation-view";
-import type { Utterance } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -186,6 +191,10 @@ export default function ThemedCaptureDetail() {
   const endMutation = useEndCapture(id);
   const validateMutation = useValidateThemeForm(id);
   const resendMutation = useResendWhatsApp(id);
+  const transcriptMutation = useUpdateTranscript(id);
+  const { data: session } = useSession();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Better Auth session type doesn't expose role, matches general page pattern
+  const isAdmin = (session?.user as any)?.role === "admin";
 
   // ── Local state ──
   const [formValues, setFormValues] = useState<Record<string, string>>({});
@@ -195,6 +204,13 @@ export default function ThemedCaptureDetail() {
   const [validationResult, setValidationResult] =
     useState<ValidationResult | null>(null);
   const [attemptsUsed, setAttemptsUsed] = useState(0);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [csvData, setCsvData] = useState<string[][] | null>(null);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvRegenerating, setCsvRegenerating] = useState(false);
+  const [pendingCsvReload, setPendingCsvReload] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ participant: "a" | "b"; index: number; text: string } | null>(null);
+  const [formInitialized, setFormInitialized] = useState(false);
 
   // ── Derived values ──
   const status = capture?.status ?? "created";
@@ -218,6 +234,88 @@ export default function ThemedCaptureDetail() {
   const recordingUrl = capture?.recordingUrl ?? null;
   const recordingUrlA = capture?.recordingUrlA ?? null;
   const recordingUrlB = capture?.recordingUrlB ?? null;
+  const datasetCsvUrl = capture?.datasetCsvUrl ?? null;
+
+  // Populate form values from theme data when viewing a completed capture
+  useEffect(() => {
+    if (theme?.data && isPostCall && !formInitialized) {
+      setFormValues(theme.data);
+      setFormInitialized(true);
+    }
+  }, [theme?.data, isPostCall, formInitialized]);
+
+  // ── CSV loading ──
+  const loadCsv = useCallback(async () => {
+    if (!datasetCsvUrl) return;
+    setCsvLoading(true);
+    try {
+      const url = `${datasetCsvUrl}${datasetCsvUrl.includes("?") ? "&" : "?"}t=${Date.now()}`;
+      const res = await fetch(url);
+      const text = await res.text();
+      const rows = text.split("\n").filter(Boolean).map((row) => {
+        const cells: string[] = [];
+        let current = "";
+        let inQuotes = false;
+        for (const ch of row) {
+          if (ch === '"') { inQuotes = !inQuotes; }
+          else if (ch === "," && !inQuotes) { cells.push(current); current = ""; }
+          else { current += ch; }
+        }
+        cells.push(current);
+        return cells;
+      });
+      setCsvData(rows);
+    } catch { setCsvData(null); }
+    finally { setCsvLoading(false); }
+  }, [datasetCsvUrl]);
+
+  // ── Edit / Delete handlers ──
+  const handleEditUtterance = useCallback((participant: "a" | "b", index: number, text: string) => {
+    const key = `${participant}-${index}`;
+    setSavingKey(key);
+    setCsvRegenerating(true);
+    setPendingCsvReload(true);
+    transcriptMutation.mutate({ participant, index, text }, {
+      onSettled: () => setSavingKey(null),
+      onSuccess: () => { toast.success("Transcript updated — CSV regenerating..."); },
+      onError: () => { setCsvRegenerating(false); setPendingCsvReload(false); },
+    });
+  }, [transcriptMutation]);
+
+  const handleDeleteUtterance = useCallback((participant: "a" | "b", index: number, text: string) => {
+    setDeleteTarget({ participant, index, text });
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    const key = `${deleteTarget.participant}-${deleteTarget.index}`;
+    setSavingKey(key);
+    setCsvRegenerating(true);
+    setPendingCsvReload(true);
+    setDeleteTarget(null);
+    transcriptMutation.mutate({ participant: deleteTarget.participant, index: deleteTarget.index, action: "delete" }, {
+      onSettled: () => setSavingKey(null),
+      onSuccess: () => { toast.success("Utterance deleted — CSV regenerating..."); },
+      onError: () => { setCsvRegenerating(false); setPendingCsvReload(false); },
+    });
+  }, [deleteTarget, transcriptMutation]);
+
+  // After edit, reload CSV sheet (with mount guard to prevent state updates after unmount)
+  useEffect(() => {
+    if (!pendingCsvReload) return;
+    let mounted = true;
+    const timer = setTimeout(async () => {
+      if (mounted && csvData) await loadCsv();
+      if (mounted) {
+        setCsvRegenerating(false);
+        setPendingCsvReload(false);
+      }
+    }, 2000);
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, [pendingCsvReload, csvData, loadCsv]);
 
   const utterancesA = useMemo(() => parseUtterances(capture?.transcriptA, id), [capture?.transcriptA, id]);
   const utterancesB = useMemo(() => parseUtterances(capture?.transcriptB, id), [capture?.transcriptB, id]);
@@ -923,13 +1021,101 @@ export default function ThemedCaptureDetail() {
                         utterancesB={utterancesB}
                         phoneA={capture.phoneA}
                         phoneB={capture.phoneB}
+                        onEditUtterance={isAdmin ? handleEditUtterance : undefined}
+                        onDeleteUtterance={isAdmin ? handleDeleteUtterance : undefined}
+                        savingKey={savingKey}
                       />
+                    </motion.div>
+                  )}
+
+                  {/* CSV Sheet */}
+                  {datasetCsvUrl && (
+                    <motion.div variants={fadeUp}>
+                      <Sheet>
+                        <SheetTrigger render={<Button variant="outline" size="sm" className="gap-1.5" onClick={() => { if (!csvData) loadCsv(); }} />}>
+                          <Table2 className="size-3.5" />
+                          View CSV
+                        </SheetTrigger>
+                        <SheetContent side="right" style={{ maxWidth: "85vw" }}>
+                          <SheetHeader>
+                            <SheetTitle>Dataset CSV</SheetTitle>
+                          </SheetHeader>
+                          <div className="overflow-auto flex-1 mt-4">
+                            {csvLoading ? (
+                              <div className="flex items-center justify-center py-12">
+                                <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
+                              </div>
+                            ) : csvData ? (
+                              <table className="text-xs w-full border-collapse">
+                                <thead>
+                                  <tr>
+                                    {csvData[0]?.map((h, i) => (
+                                      <th key={i} className="border border-border px-2 py-1 text-left font-medium bg-muted/50 sticky top-0">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {csvData.slice(1).map((row, ri) => (
+                                    <tr key={ri}>
+                                      {row.map((cell, ci) => (
+                                        <td key={ci} className="border border-border px-2 py-1 max-w-[300px] truncate">{cell}</td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            ) : (
+                              <p className="text-sm text-muted-foreground text-center py-8">No CSV data</p>
+                            )}
+                          </div>
+                          <SheetFooter className="mt-4">
+                            <a href={datasetCsvUrl} download>
+                              <Button variant="outline" size="sm" className="gap-1.5">
+                                <Download className="size-3.5" />
+                                Download CSV
+                              </Button>
+                            </a>
+                            {csvRegenerating && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <LoaderCircle className="size-3 animate-spin" /> Regenerating...
+                              </span>
+                            )}
+                          </SheetFooter>
+                        </SheetContent>
+                      </Sheet>
                     </motion.div>
                   )}
                 </>
               )}
             </>
           )}
+
+          {/* Delete utterance confirmation dialog */}
+          <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete utterance?</DialogTitle>
+                <DialogDescription>
+                  This will permanently remove this utterance from the transcript and regenerate the CSV.
+                </DialogDescription>
+              </DialogHeader>
+              {deleteTarget && (
+                <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground line-clamp-3">
+                  &ldquo;{deleteTarget.text}&rdquo;
+                </div>
+              )}
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+                <Button variant="destructive" onClick={confirmDelete} disabled={transcriptMutation.isPending}>
+                  {transcriptMutation.isPending ? (
+                    <><LoaderCircle className="size-3.5 animate-spin" /> Deleting...</>
+                  ) : (
+                    "Delete"
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* ── Metadata footer ── */}
           {!isPreCall && (

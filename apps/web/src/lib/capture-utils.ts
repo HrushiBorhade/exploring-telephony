@@ -15,7 +15,11 @@ export const statusConfig: Record<
   verified:        { label: "Verified",       className: "bg-emerald-500/10 text-emerald-500",   dot: "bg-emerald-500" },
 };
 
-export function getDisplayStatus(capture: { status: string; verified?: boolean | null }): string {
+export function getDisplayStatus(capture: { status: string; verified?: boolean | null; recordingUrl?: string | null; recordingUrlA?: string | null; recordingUrlB?: string | null }): string {
+  // ended + no recordings = call failed (consent denied, phone not answered, etc.)
+  if (capture.status === "ended" && !capture.recordingUrl && !capture.recordingUrlA && !capture.recordingUrlB) {
+    return "failed";
+  }
   if (capture.status !== "completed") return capture.status;
   if (capture.verified === true) return "verified";
   if (capture.verified === false) return "pending_review";
