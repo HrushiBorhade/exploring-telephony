@@ -2,8 +2,38 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { phoneNumber, admin } from "better-auth/plugins";
 import { db, user, session, account, verification } from "@repo/db";
+import { logger } from "../logger";
 
 const isProduction = process.env.NODE_ENV === "production";
+
+async function notifySlackNewUser(newUser: { id: string; name: string; email: string; phoneNumber?: string | null; createdAt?: Date | null }) {
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  const phone = newUser.phoneNumber || "N/A";
+  const timestamp = newUser.createdAt ? new Date(newUser.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+
+  await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "New User Signup", emoji: true },
+        },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Phone:*\n${phone}` },
+            { type: "mrkdwn", text: `*User ID:*\n${newUser.id}` },
+            { type: "mrkdwn", text: `*Signed Up:*\n${timestamp}` },
+          ],
+        },
+      ],
+    }),
+  });
+}
 
 export const auth = betterAuth({
   baseURL: isProduction ? "https://asr-api.annoteapp.com" : "http://localhost:8080",
@@ -90,6 +120,17 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 30,
     updateAge: 60 * 60 * 24,
     cookieCache: { enabled: true, maxAge: 60 * 5 },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          notifySlackNewUser(user).catch((err) =>
+            logger.error({ err, userId: user.id }, "Slack new-user notification failed")
+          );
+        },
+      },
+    },
   },
   advanced: {
     crossSubDomainCookies: {

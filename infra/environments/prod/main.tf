@@ -577,6 +577,7 @@ module "ecs" {
             { name = "AUTHKEY_WID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_WID::" },
             { name = "AUTHKEY_THEME_WID", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:AUTHKEY_THEME_WID::" },
             { name = "BETTER_AUTH_SECRET", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:BETTER_AUTH_SECRET::" },
+            { name = "SLACK_WEBHOOK_URL", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:SLACK_WEBHOOK_URL::" },
           ]
 
           readonlyRootFilesystem = false
