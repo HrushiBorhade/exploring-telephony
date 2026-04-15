@@ -1,1 +1,1 @@
-ALTER TABLE "user_profiles" ADD COLUMN "upi_id" text;
+ALTER TABLE "user_profiles" ADD COLUMN IF NOT EXISTS "upi_id" text;
