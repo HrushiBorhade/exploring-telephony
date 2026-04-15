@@ -1034,3 +1034,65 @@ resource "aws_cloudwatch_metric_alarm" "redis_cpu_high" {
     CacheClusterId = aws_elasticache_cluster.redis.cluster_id
   }
 }
+
+# ─────────────────────────────────────────────────────────────────────
+# SNS → Lambda → Slack — routes CloudWatch alarms to Slack #alerts
+# ─────────────────────────────────────────────────────────────────────
+
+data "archive_file" "sns_to_slack" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../lambda/sns-to-slack"
+  output_path = "${path.module}/../../lambda/sns-to-slack.zip"
+}
+
+resource "aws_iam_role" "sns_to_slack" {
+  name = "${var.project}-sns-to-slack"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "sns_to_slack_logs" {
+  role       = aws_iam_role.sns_to_slack.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_lambda_function" "sns_to_slack" {
+  function_name    = "${var.project}-sns-to-slack"
+  filename         = data.archive_file.sns_to_slack.output_path
+  source_code_hash = data.archive_file.sns_to_slack.output_base64sha256
+  handler          = "index.handler"
+  runtime          = "nodejs20.x"
+  timeout          = 10
+  memory_size      = 128
+  role             = aws_iam_role.sns_to_slack.arn
+
+  environment {
+    variables = {
+      SLACK_ALERTS_WEBHOOK_URL = "placeholder"
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [environment]
+  }
+}
+
+resource "aws_sns_topic_subscription" "alerts_to_slack" {
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.sns_to_slack.arn
+}
+
+resource "aws_lambda_permission" "sns_invoke" {
+  statement_id  = "AllowSNSInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.sns_to_slack.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.alerts.arn
+}
