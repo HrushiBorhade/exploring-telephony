@@ -44,3 +44,10 @@ export const webhookDurationHistogram = new Histogram({
   buckets: [5, 10, 50, 100, 500, 1000],
   registers: [registry],
 });
+
+export const queueDepth = new Gauge({
+  name: "queue_depth",
+  help: "Current queue depth",
+  labelNames: ["queue", "state"] as const, // state: waiting, active, failed
+  registers: [registry],
+});

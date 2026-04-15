@@ -15,12 +15,14 @@
     "@google/genai": "*",
     "@repo/db": "workspace:*",
     "@repo/queues": "workspace:*",
+    "@repo/shared": "workspace:*",
     "bullmq": "*",
     "csv-stringify": "*",
     "dotenv": "*",
     "openai": "^6.34.0",
     "pino": "*",
     "pino-pretty": "*",
+    "prom-client": "^15.1.3",
     "zod": "*"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { env } from "./env";
 import * as dbq from "@repo/db";
 import { setupMiddleware } from "./middleware/setup";
+import { globalErrorHandler } from "./middleware/error-handler";
 
 // Routes
 import captureRoutes from "./routes/captures";
@@ -17,7 +18,7 @@ const { PORT } = env;
 
 // Catch unhandled promise rejections
 process.on("unhandledRejection", (reason: any) => {
-  logger.error("[UNHANDLED]", reason?.message ?? reason);
+  logger.error({ err: reason?.message, stack: reason?.stack }, "Unhandled promise rejection");
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -63,6 +64,9 @@ app.use(themeRoutes);
 app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
+
+// Global error handler — must be AFTER all routes
+app.use(globalErrorHandler);
 
 // ════════════════════════════════════════════════════════════════════
 // Start + Graceful Shutdown

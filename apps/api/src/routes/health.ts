@@ -2,7 +2,7 @@ import { Router } from "express";
 import * as dbq from "@repo/db";
 import { audioQueue, csvQueue } from "@repo/queues";
 import { roomService } from "../lib/livekit";
-import { registry } from "../metrics";
+import { registry, queueDepth } from "../metrics";
 import { activeCaptures } from "../services/state";
 import { logger } from "../logger";
 
@@ -83,6 +83,14 @@ router.get("/health", async (_req, res) => {
       audio: { waiting: aw, active: aa, failed: af },
       csv: { waiting: cw, active: ca, failed: cf },
     };
+
+    // Update Prometheus gauges
+    queueDepth.set({ queue: "audio", state: "waiting" }, aw);
+    queueDepth.set({ queue: "audio", state: "active" }, aa);
+    queueDepth.set({ queue: "audio", state: "failed" }, af);
+    queueDepth.set({ queue: "csv", state: "waiting" }, cw);
+    queueDepth.set({ queue: "csv", state: "active" }, ca);
+    queueDepth.set({ queue: "csv", state: "failed" }, cf);
   } catch {}
 
   // Determine overall status:

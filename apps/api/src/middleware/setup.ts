@@ -2,14 +2,22 @@ import express, { type Express } from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "../env";
+import { requestIdMiddleware } from "./request-id";
+import { metricsMiddleware } from "./metrics";
 
 const ALLOWED_ORIGINS = env.NODE_ENV === "production"
   ? [env.FRONTEND_URL].filter((v): v is string => !!v)
   : ["http://localhost:3000", "http://localhost:8080", "http://localhost:3002"];
 
 export function setupMiddleware(app: Express) {
+  // Prometheus HTTP request metrics (must be first to capture all requests)
+  app.use(metricsMiddleware);
+
   // Trust ALB/reverse proxy (required for correct client IP in rate limiting)
   app.set("trust proxy", 1);
+
+  // Assign request ID + child logger to every request
+  app.use(requestIdMiddleware);
 
   // Security headers
   app.use(helmet({ contentSecurityPolicy: false }));
