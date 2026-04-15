@@ -11,15 +11,21 @@ import { uploadToS3, downloadFromS3, deleteS3Prefix } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { moderateTranscript } from "../lib/moderation";
 import { logger } from "../logger";
+import { extractTraceContext } from "@repo/shared";
 
 export interface AudioJobData {
   captureId: string;
   mixedUrl: string;
   callerAUrl: string;
   callerBUrl: string;
+  _trace?: Record<string, string>;
 }
 
 export async function processAudio(job: Job<AudioJobData>): Promise<void> {
+  return extractTraceContext(job.data._trace, () => _processAudio(job));
+}
+
+async function _processAudio(job: Job<AudioJobData>): Promise<void> {
   const { captureId, mixedUrl, callerAUrl, callerBUrl } = job.data;
   const log = logger.child({ captureId, jobId: job.id });
 

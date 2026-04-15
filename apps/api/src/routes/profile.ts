@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { requireAuth, type AuthRequest } from "../middleware/auth";
 import * as dbq from "@repo/db";
+import { notifySlack } from "@repo/shared";
+import { logger } from "../logger";
 
 const router = Router();
 
@@ -93,6 +95,25 @@ router.put("/api/profile/languages", requireAuth, async (req: AuthRequest, res) 
 
     await dbq.setLanguages(req.userId!, languages);
     await dbq.markOnboardingComplete(req.userId!);
+
+    // Notify Slack when onboarding completes
+    const primaryLang = languages.find((l: any) => l.isPrimary)?.languageName || languages[0]?.languageName || "N/A";
+    notifySlack({
+      blocks: [
+        { type: "header", text: { type: "plain_text", text: "User Onboarding Completed", emoji: true } },
+        {
+          type: "section",
+          fields: [
+            { type: "mrkdwn", text: `*Name:*\n${profile.name}` },
+            { type: "mrkdwn", text: `*Phone:*\n${(req as any).userPhone || "N/A"}` },
+            { type: "mrkdwn", text: `*Location:*\n${profile.city}, ${profile.state}` },
+            { type: "mrkdwn", text: `*Language:*\n${primaryLang}` },
+            { type: "mrkdwn", text: `*Age/Gender:*\n${profile.age}, ${profile.gender}` },
+          ],
+        },
+      ],
+    }).catch((err) => logger.error({ err }, "Slack onboarding notification failed"));
+
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to save languages" });

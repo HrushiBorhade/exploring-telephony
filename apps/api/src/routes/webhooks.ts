@@ -12,6 +12,7 @@ import {
   captureActiveGauge,
   webhookDurationHistogram,
 } from "../metrics";
+import { injectTraceContext } from "@repo/shared";
 
 const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, S3_BUCKET } = env;
 const webhookReceiver = new WebhookReceiver(LIVEKIT_API_KEY!, LIVEKIT_API_SECRET!);
@@ -246,6 +247,7 @@ router.post("/livekit/webhook", async (req, res) => {
                 mixedUrl: ready.recordingUrl ?? (ready as any).recording_url,
                 callerAUrl: ready.recordingUrlA ?? (ready as any).recording_url_a,
                 callerBUrl: ready.recordingUrlB ?? (ready as any).recording_url_b,
+                _trace: injectTraceContext(),
               },
               { jobId: `process-${ready.id}` },
             );

@@ -10,6 +10,13 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "*",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.72.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.214.0",
+    "@opentelemetry/instrumentation-pino": "^0.60.0",
+    "@opentelemetry/resources": "^2.6.1",
+    "@opentelemetry/sdk-node": "^0.214.0",
+    "@opentelemetry/semantic-conventions": "^1.40.0",
     "@repo/db": "workspace:*",
     "@repo/queues": "workspace:*",
     "@repo/shared": "workspace:*",

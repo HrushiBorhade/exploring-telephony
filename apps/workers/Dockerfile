@@ -30,6 +30,13 @@ RUN esbuild apps/workers/src/worker.ts \
     --alias:@repo/types=./packages/types/src/index.ts \
     --alias:@repo/queues=./packages/queues/src/index.ts \
     --alias:@repo/shared=./packages/shared/src/index.ts \
+    --sourcemap && \
+    esbuild apps/workers/src/instrumentation.ts \
+    --bundle \
+    --platform=node \
+    --target=node22 \
+    --outfile=dist/instrumentation.js \
+    --packages=external \
     --sourcemap
 
 # Create pruned production deps for the worker
@@ -48,9 +55,10 @@ COPY --from=builder /app/pruned/node_modules ./node_modules
 # Copy the single bundled JS file
 COPY --from=builder /app/dist/worker.js ./dist/worker.js
 COPY --from=builder /app/dist/worker.js.map ./dist/worker.js.map
+COPY --from=builder /app/dist/instrumentation.js ./dist/instrumentation.js
 
 USER app
 
 EXPOSE 0
 ENV NODE_ENV=production
-CMD ["node", "--enable-source-maps", "dist/worker.js"]
+CMD ["node", "--require", "./dist/instrumentation.js", "--enable-source-maps", "dist/worker.js"]

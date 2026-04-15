@@ -33,6 +33,13 @@ RUN esbuild apps/api/src/server.ts \
     --alias:@repo/types=./packages/types/src/index.ts \
     --alias:@repo/queues=./packages/queues/src/index.ts \
     --alias:@repo/shared=./packages/shared/src/index.ts \
+    --sourcemap && \
+    esbuild apps/api/src/instrumentation.ts \
+    --bundle \
+    --platform=node \
+    --target=node22 \
+    --outfile=dist/instrumentation.js \
+    --packages=external \
     --sourcemap
 
 # Create pruned production deps for the API
@@ -50,6 +57,7 @@ COPY --from=builder /app/pruned/node_modules ./node_modules
 # Copy the single bundled JS file + migration SQL files
 COPY --from=builder /app/dist/server.js ./dist/server.js
 COPY --from=builder /app/dist/server.js.map ./dist/server.js.map
+COPY --from=builder /app/dist/instrumentation.js ./dist/instrumentation.js
 COPY --from=builder /app/drizzle ./drizzle
 
 RUN mkdir -p recordings && chown app:app recordings
@@ -61,4 +69,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 8080
 ENV NODE_ENV=production
-CMD ["node", "--enable-source-maps", "dist/server.js"]
+CMD ["node", "--require", "./dist/instrumentation.js", "--enable-source-maps", "dist/server.js"]
