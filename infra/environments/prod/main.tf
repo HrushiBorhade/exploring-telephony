@@ -522,8 +522,8 @@ module "ecs" {
 
   services = {
     telephony-api = {
-      cpu    = 512
-      memory = 1024
+      cpu    = 1024
+      memory = 2048
 
       enable_execute_command = true
 
@@ -534,8 +534,8 @@ module "ecs" {
 
       container_definitions = {
         api = {
-          cpu       = 512
-          memory    = 1024
+          cpu       = 768
+          memory    = 1536
           essential = true
           image     = "${aws_ecr_repository.api.repository_url}:latest"
 
@@ -582,6 +582,64 @@ module "ecs" {
 
           readonlyRootFilesystem = false
 
+          enable_cloudwatch_logging = true
+        }
+
+        # Grafana Alloy sidecar — scrapes /metrics, receives OTLP, forwards to Grafana Cloud
+        alloy = {
+          cpu       = 256
+          memory    = 512
+          essential = false
+          image     = "grafana/alloy:v1.9.1"
+
+          entryPoint = ["/bin/sh", "-c"]
+          command = [<<-EOT
+            cat > /tmp/config.alloy <<'ALLOYCFG'
+            prometheus.scrape "app" {
+              targets         = [{"__address__" = "localhost:8080"}]
+              forward_to      = [prometheus.remote_write.mimir.receiver]
+              scrape_interval = "15s"
+            }
+            prometheus.remote_write "mimir" {
+              endpoint {
+                url = sys.env("GRAFANA_METRICS_URL")
+                basic_auth {
+                  username = sys.env("GRAFANA_METRICS_ID")
+                  password = sys.env("GRAFANA_CLOUD_API_KEY")
+                }
+              }
+            }
+            otelcol.receiver.otlp "default" {
+              grpc { endpoint = "0.0.0.0:4317" }
+              http { endpoint = "0.0.0.0:4318" }
+              output { traces = [otelcol.exporter.otlphttp.tempo.input] }
+            }
+            otelcol.exporter.otlphttp "tempo" {
+              client {
+                endpoint = sys.env("GRAFANA_OTLP_ENDPOINT")
+                auth     = otelcol.auth.basic.creds.handler
+              }
+            }
+            otelcol.auth.basic "creds" {
+              username = sys.env("GRAFANA_METRICS_ID")
+              password = sys.env("GRAFANA_CLOUD_API_KEY")
+            }
+            ALLOYCFG
+            exec /bin/alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy
+          EOT
+          ]
+
+          environment = [
+            { name = "GRAFANA_METRICS_URL", value = "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push" },
+            { name = "GRAFANA_METRICS_ID", value = "3117054" },
+            { name = "GRAFANA_OTLP_ENDPOINT", value = "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp" },
+          ]
+
+          secrets = [
+            { name = "GRAFANA_CLOUD_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:GRAFANA_CLOUD_API_KEY::" },
+          ]
+
+          readonlyRootFilesystem = false
           enable_cloudwatch_logging = true
         }
       }
@@ -637,7 +695,7 @@ module "ecs" {
 
     background-worker = {
       cpu    = 1024
-      memory = 2048
+      memory = 3072
 
       enable_execute_command = true
 
@@ -648,7 +706,7 @@ module "ecs" {
 
       container_definitions = {
         worker = {
-          cpu       = 1024
+          cpu       = 768
           memory    = 2048
           essential = true
           image     = "${aws_ecr_repository.worker.repository_url}:latest"
@@ -667,10 +725,69 @@ module "ecs" {
             { name = "DEEPGRAM_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:DEEPGRAM_API_KEY::" },
             { name = "S3_ACCESS_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_ACCESS_KEY::" },
             { name = "S3_SECRET_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_SECRET_KEY::" },
+            { name = "SLACK_WEBHOOK_URL", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:SLACK_WEBHOOK_URL::" },
           ]
 
           readonlyRootFilesystem = false
 
+          enable_cloudwatch_logging = true
+        }
+
+        # Grafana Alloy sidecar — scrapes worker /metrics on :9090, forwards to Grafana Cloud
+        alloy = {
+          cpu       = 256
+          memory    = 512
+          essential = false
+          image     = "grafana/alloy:v1.9.1"
+
+          entryPoint = ["/bin/sh", "-c"]
+          command = [<<-EOT
+            cat > /tmp/config.alloy <<'ALLOYCFG'
+            prometheus.scrape "app" {
+              targets         = [{"__address__" = "localhost:9090"}]
+              forward_to      = [prometheus.remote_write.mimir.receiver]
+              scrape_interval = "15s"
+            }
+            prometheus.remote_write "mimir" {
+              endpoint {
+                url = sys.env("GRAFANA_METRICS_URL")
+                basic_auth {
+                  username = sys.env("GRAFANA_METRICS_ID")
+                  password = sys.env("GRAFANA_CLOUD_API_KEY")
+                }
+              }
+            }
+            otelcol.receiver.otlp "default" {
+              grpc { endpoint = "0.0.0.0:4317" }
+              http { endpoint = "0.0.0.0:4318" }
+              output { traces = [otelcol.exporter.otlphttp.tempo.input] }
+            }
+            otelcol.exporter.otlphttp "tempo" {
+              client {
+                endpoint = sys.env("GRAFANA_OTLP_ENDPOINT")
+                auth     = otelcol.auth.basic.creds.handler
+              }
+            }
+            otelcol.auth.basic "creds" {
+              username = sys.env("GRAFANA_METRICS_ID")
+              password = sys.env("GRAFANA_CLOUD_API_KEY")
+            }
+            ALLOYCFG
+            exec /bin/alloy run /tmp/config.alloy --server.http.listen-addr=0.0.0.0:12345 --storage.path=/tmp/alloy
+          EOT
+          ]
+
+          environment = [
+            { name = "GRAFANA_METRICS_URL", value = "https://prometheus-prod-43-prod-ap-south-1.grafana.net/api/prom/push" },
+            { name = "GRAFANA_METRICS_ID", value = "3117054" },
+            { name = "GRAFANA_OTLP_ENDPOINT", value = "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp" },
+          ]
+
+          secrets = [
+            { name = "GRAFANA_CLOUD_API_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:GRAFANA_CLOUD_API_KEY::" },
+          ]
+
+          readonlyRootFilesystem = false
           enable_cloudwatch_logging = true
         }
       }
