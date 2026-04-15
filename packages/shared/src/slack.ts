@@ -23,11 +23,17 @@ export interface SlackPayload {
 }
 
 /**
- * Post a Block Kit payload to the configured Slack webhook.
- * No-ops when SLACK_WEBHOOK_URL is missing (local dev).
+ * Post a Block Kit payload to a Slack webhook.
+ *
+ * channel "alerts" → SLACK_ALERTS_WEBHOOK_URL (errors, failures, incidents)
+ * channel "default" → SLACK_WEBHOOK_URL (signups, informational)
+ *
+ * No-ops when the target webhook URL is missing (local dev).
  */
-export async function notifySlack(payload: SlackPayload): Promise<void> {
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+export async function notifySlack(payload: SlackPayload, channel: "default" | "alerts" = "default"): Promise<void> {
+  const webhookUrl = channel === "alerts"
+    ? (process.env.SLACK_ALERTS_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL)
+    : process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   const res = await fetch(webhookUrl, {
@@ -87,7 +93,7 @@ export async function notifySlackError(opts: {
 
   await notifySlack({
     attachments: [{ color: "#E01E5A", blocks }],
-  });
+  }, "alerts");
 }
 
 /**
