@@ -1,1 +1,1 @@
-ALTER TABLE "captures_v2" ADD COLUMN "verified" boolean;
+ALTER TABLE "captures_v2" ADD COLUMN IF NOT EXISTS "verified" boolean;

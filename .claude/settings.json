@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "bash .claude/scripts/validate-migrations.sh",
+            "timeout": 15,
+            "statusMessage": "Validating migrations & infra..."
+          }
+        ]
+      }
+    ]
+  }
+}

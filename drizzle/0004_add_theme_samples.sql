@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS "theme_samples" (
 --> statement-breakpoint
 
 -- Add theme_sample_id column to captures_v2
-ALTER TABLE "captures_v2" ADD COLUMN "theme_sample_id" integer;
+ALTER TABLE "captures_v2" ADD COLUMN IF NOT EXISTS "theme_sample_id" integer;
 --> statement-breakpoint
 
 -- Foreign key: captures_v2.theme_sample_id -> theme_samples.id

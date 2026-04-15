@@ -63,9 +63,16 @@ jobs:
 
       - name: Deploy to ECS (rolling update)
         run: |
+          TASK_DEF_ARN=$(aws ecs describe-task-definition \
+            --task-definition telephony-api \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text \
+            --region "$AWS_REGION")
+          echo "Deploying with task definition: $TASK_DEF_ARN"
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
+            --task-definition "$TASK_DEF_ARN" \
             --force-new-deployment \
             --region "$AWS_REGION"
 
