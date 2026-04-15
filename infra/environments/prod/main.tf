@@ -796,6 +796,22 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Resource = "*"
       },
       {
+        Sid      = "ECSPassRole"
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = [
+          module.ecs.services["telephony-api"].task_exec_iam_role_arn,
+          module.ecs.services["telephony-api"].tasks_iam_role_arn,
+          module.ecs.services["background-worker"].task_exec_iam_role_arn,
+          module.ecs.services["background-worker"].tasks_iam_role_arn,
+        ]
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ecs-tasks.amazonaws.com"
+          }
+        }
+      },
+      {
         Sid      = "SecretsRead"
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
