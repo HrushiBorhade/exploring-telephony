@@ -592,7 +592,7 @@ module "ecs" {
           essential = false
           image     = "grafana/alloy:v1.9.1"
 
-          entryPoint = ["/bin/sh", "-c"]
+          entrypoint = ["/bin/sh", "-c"]
           command = [<<-EOT
             cat > /tmp/config.alloy <<'ALLOYCFG'
             prometheus.scrape "app" {
@@ -740,7 +740,7 @@ module "ecs" {
           essential = false
           image     = "grafana/alloy:v1.9.1"
 
-          entryPoint = ["/bin/sh", "-c"]
+          entrypoint = ["/bin/sh", "-c"]
           command = [<<-EOT
             cat > /tmp/config.alloy <<'ALLOYCFG'
             prometheus.scrape "app" {

@@ -11,6 +11,7 @@ COPY apps/workers/package.json ./apps/workers/
 COPY packages/db/package.json ./packages/db/
 COPY packages/types/package.json ./packages/types/
 COPY packages/queues/package.json ./packages/queues/
+COPY packages/shared/package.json ./packages/shared/
 
 RUN pnpm install --frozen-lockfile
 
@@ -28,6 +29,7 @@ RUN esbuild apps/workers/src/worker.ts \
     --alias:@repo/db=./packages/db/src/index.ts \
     --alias:@repo/types=./packages/types/src/index.ts \
     --alias:@repo/queues=./packages/queues/src/index.ts \
+    --alias:@repo/shared=./packages/shared/src/index.ts \
     --sourcemap
 
 # Create pruned production deps for the worker
