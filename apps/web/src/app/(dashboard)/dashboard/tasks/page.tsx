@@ -107,7 +107,8 @@ type StatusFilter =
   | "active"
   | "processing"
   | "failed"
-  | "created";
+  | "created"
+  | "pending_review";
 
 // ── Page component ──────────────────────────────────────────────────
 
@@ -146,13 +147,13 @@ export default function TasksPage() {
     }
 
     if (statusFilter !== "all") {
-      if (statusFilter === "active") {
-        filtered = filtered.filter(
-          (c) => c.status === "calling" || c.status === "active",
-        );
-      } else {
-        filtered = filtered.filter((c) => c.status === statusFilter);
-      }
+      filtered = filtered.filter((c) => {
+        const ds = getDisplayStatus(c);
+        if (statusFilter === "active") {
+          return ds === "calling" || ds === "active";
+        }
+        return ds === statusFilter;
+      });
     }
 
     return filtered;
@@ -252,6 +253,7 @@ export default function TasksPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="pending_review">Pending Review</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="active">Active</SelectItem>
                 <SelectItem value="processing">Processing</SelectItem>
