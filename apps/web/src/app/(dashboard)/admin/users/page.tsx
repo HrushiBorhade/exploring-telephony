@@ -187,7 +187,7 @@ export default function AdminUsersPage() {
                   className="group"
                   style={{ animation: `fade-in-up 0.3s ease-out backwards`, animationDelay: `${i * 30}ms` }}
                 >
-                  <TableCell className="font-medium">{user.name || "—"}</TableCell>
+                  <TableCell className="font-medium">{user.name && !user.name.startsWith("+") ? user.name : "—"}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {(user as any).phoneNumber || user.email}
                   </TableCell>

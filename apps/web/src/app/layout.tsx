@@ -47,7 +47,7 @@ export default function RootLayout({
         "font-sans"
       )}
     >
-      <head>
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
         {isProduction && (
           <Script
             id="microsoft-clarity"
@@ -57,8 +57,6 @@ export default function RootLayout({
             }}
           />
         )}
-      </head>
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
         <QueryProvider>
           <ThemeProvider>
             <TooltipProvider>
