@@ -394,3 +394,10 @@ export async function listAllThemeSamples() {
     .orderBy(schema.themeSamples.language, schema.themeSamples.category, schema.themeSamples.id);
 }
 
+// ── User ──────────────────────────────────────────────────────────────
+
+/** Update user.name in the Better Auth user table (e.g., after onboarding sets the real name). */
+export async function updateUserName(userId: string, name: string) {
+  await db.update(schema.user).set({ name, updatedAt: new Date() }).where(eq(schema.user.id, userId));
+}
+

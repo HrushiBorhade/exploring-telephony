@@ -54,6 +54,8 @@ router.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
 
   try {
     await dbq.upsertProfile(req.userId!, { name: name.trim(), age: Number(age), gender, city: city.trim(), state, upiId: upiId?.trim() || undefined });
+    // Also update user.name in Better Auth user table so admin listUsers shows the real name
+    await dbq.updateUserName(req.userId!, name.trim()).catch(() => {});
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to save profile" });
