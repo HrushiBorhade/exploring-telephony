@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { env } from "./env";
 import * as dbq from "@repo/db";
 import { setupMiddleware } from "./middleware/setup";
+import { roomService } from "./lib/livekit";
 import { globalErrorHandler } from "./middleware/error-handler";
 
 // Routes
@@ -91,14 +92,37 @@ async function start() {
   const server = app.listen(Number(PORT), async () => {
     logger.info({ port: PORT }, "Voice Capture Platform started");
 
-    // Reconcile captures orphaned by a previous crash/restart
+    // Reconcile captures orphaned by a previous crash/restart.
+    // CRITICAL: Check LiveKit before marking as ended — during rolling deploys,
+    // captures may be legitimately active in LiveKit rooms. Only mark as orphaned
+    // if the LiveKit room no longer exists or has no participants.
     try {
       const stale = await dbq.findStaleCaptures();
+      let reconciled = 0;
+      let skipped = 0;
       for (const c of stale) {
-        await dbq.updateCapture(c.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 });
-        logger.warn({ captureId: c.id, prevStatus: c.status }, "[STARTUP] Marked orphaned capture as ended");
+        const roomName = c.roomName || `capture-${c.id}`;
+        let roomAlive = false;
+        try {
+          const rooms = await roomService.listRooms([roomName]);
+          if (rooms.length > 0 && rooms[0].numParticipants > 0) {
+            roomAlive = true;
+          }
+        } catch {
+          // LiveKit unreachable — err on the side of caution, don't kill the capture
+          roomAlive = true;
+        }
+
+        if (roomAlive) {
+          skipped++;
+          logger.info({ captureId: c.id, roomName, prevStatus: c.status }, "[STARTUP] Capture still active in LiveKit — skipping reconciliation");
+        } else {
+          reconciled++;
+          await dbq.updateCapture(c.id, { status: "ended", endedAt: new Date(), durationSeconds: 0 });
+          logger.warn({ captureId: c.id, prevStatus: c.status }, "[STARTUP] Marked orphaned capture as ended (room gone)");
+        }
       }
-      if (stale.length > 0) logger.info(`[STARTUP] Reconciled ${stale.length} orphaned capture(s)`);
+      if (stale.length > 0) logger.info({ reconciled, skipped, total: stale.length }, "[STARTUP] Reconciliation complete");
     } catch (err: any) {
       logger.error("[STARTUP] Reconciliation failed:", err.message);
     }
