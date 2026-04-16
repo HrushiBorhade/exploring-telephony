@@ -49,6 +49,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   alphanumeric: "Alphanumeric",
   healthcare: "Healthcare",
   short_utterances: "Short Utterances",
+  customer_support: "Customer Support",
 };
 
 const LANG_LABELS: Record<string, string> = {
