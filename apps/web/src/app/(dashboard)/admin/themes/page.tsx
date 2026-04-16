@@ -299,7 +299,7 @@ export default function AdminThemesPage() {
                               Sample Values &middot; {fields.length} fields
                             </p>
                             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              {fields.map(([key, value]) => (
+                              {fields.filter(([key]) => key !== "on_submit").map(([key, value]) => (
                                 <div key={key} className="rounded-lg border bg-background p-2.5">
                                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
                                     {formatFieldLabel(key)}
@@ -308,6 +308,14 @@ export default function AdminThemesPage() {
                                 </div>
                               ))}
                             </div>
+                            {fields.find(([key]) => key === "on_submit") && (
+                              <div className="rounded-lg border-2 border-amber-500/30 bg-amber-50/30 dark:bg-amber-950/20 p-3">
+                                <p className="text-[10px] font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1">
+                                  On Submit (Participant A reads aloud)
+                                </p>
+                                <p className="text-sm leading-relaxed break-words">{fields.find(([key]) => key === "on_submit")?.[1]}</p>
+                              </div>
+                            )}
                             {sample.assignedAt && (
                               <p className="text-[10px] text-muted-foreground">
                                 Assigned: {new Date(sample.assignedAt).toLocaleString()}
