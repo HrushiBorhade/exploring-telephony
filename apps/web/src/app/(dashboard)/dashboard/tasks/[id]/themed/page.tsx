@@ -237,9 +237,11 @@ export default function ThemedCaptureDetail() {
   const recordingUrlB = capture?.recordingUrlB ?? null;
   const datasetCsvUrl = capture?.datasetCsvUrl ?? null;
 
-  // Populate form values from theme data when viewing a completed capture
+  // Populate form values from theme data when viewing a completed capture.
+  // Wait for capture to be fully loaded (not pending) before initializing,
+  // so submittedFormValues is available if it exists.
   useEffect(() => {
-    if (isPostCall && !formInitialized) {
+    if (isPostCall && !formInitialized && !captureLoading) {
       // Prefer submitted values (what user actually typed) over reference values
       if (capture?.submittedFormValues) {
         try {
@@ -253,7 +255,7 @@ export default function ThemedCaptureDetail() {
       }
       setFormInitialized(true);
     }
-  }, [capture?.submittedFormValues, theme?.data, isPostCall, formInitialized]);
+  }, [capture?.submittedFormValues, theme?.data, isPostCall, formInitialized, captureLoading]);
 
   // ── CSV loading ──
   const loadCsv = useCallback(async () => {
