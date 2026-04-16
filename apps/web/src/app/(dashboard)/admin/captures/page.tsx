@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, Search, Phone, Target } from "lucide-react";
 import { motion } from "motion/react";
@@ -49,7 +49,26 @@ export default function AdminCapturesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  const { data, isPending } = useAdminCaptures();
+  const { data, isPending, hasNextPage, fetchNextPage, isFetchingNextPage, isError } = useAdminCaptures({ limit: 50 });
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Infinite scroll
+  const observerCallback = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage && !isError) {
+        fetchNextPage();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, isError, fetchNextPage],
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(observerCallback, { rootMargin: "200px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [observerCallback]);
 
   useEffect(() => {
     if (session && (session.user as any)?.role !== "admin") {
@@ -175,6 +194,7 @@ export default function AdminCapturesPage() {
             {hasActiveFilters ? "No captures match your filters" : "No captures yet"}
           </div>
         ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -256,6 +276,18 @@ export default function AdminCapturesPage() {
               })}
             </TableBody>
           </Table>
+
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+          {isFetchingNextPage && (
+            <p className="text-center text-xs text-muted-foreground py-3">Loading more...</p>
+          )}
+          {!hasNextPage && allCaptures.length > 0 && (
+            <p className="text-center text-xs text-muted-foreground py-3">
+              All {allCaptures.length} captures loaded
+            </p>
+          )}
+          </>
         )}
       </motion.div>
     </motion.div>

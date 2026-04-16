@@ -57,9 +57,15 @@ router.get("/api/captures/stats", requireAuth, async (req: AuthRequest, res) => 
 });
 
 // Get capture
+// Only use in-memory cache for actively running captures (calling/active).
+// For everything else, read from DB — the cache can be stale after
+// ended → processing → completed transitions happen in the worker.
 router.get("/api/captures/:id", requireAuth, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
-  const capture = activeCaptures.get(id) ?? (await dbq.getCapture(id));
+  const cached = activeCaptures.get(id);
+  const capture = (cached && (cached.status === "calling" || cached.status === "active"))
+    ? cached
+    : (await dbq.getCapture(id)) ?? cached;
   if (!capture) { res.status(404).json({ error: "Not found" }); return; }
   if (capture.userId !== req.userId && req.userRole !== "admin") {
     res.status(403).json({ error: "Forbidden" }); return;
