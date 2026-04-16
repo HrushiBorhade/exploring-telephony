@@ -468,15 +468,71 @@ export default function ThemedCaptureDetail() {
           </div>
         </div>
 
-        <Badge
-          variant="outline"
-          className={`${cfg.badgeClass} whitespace-nowrap transition-colors duration-300 text-[10px] sm:text-xs`}
-        >
-          <span
-            className={`mr-1 inline-block size-1.5 rounded-full transition-colors duration-300 ${cfg.dot}${cfg.pulse ? " animate-pulse" : ""}`}
-          />
-          {cfg.label}
-        </Badge>
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {status === "completed" && datasetCsvUrl && (
+            <Sheet>
+              <SheetTrigger render={<Button variant="outline" size="sm" className="gap-1.5" onClick={() => { if (!csvData) loadCsv(); }} />}>
+                <Table2 className="size-3.5" />
+                View CSV
+              </SheetTrigger>
+              <SheetContent side="right" style={{ maxWidth: "85vw" }}>
+                <SheetHeader>
+                  <SheetTitle>Dataset CSV</SheetTitle>
+                </SheetHeader>
+                <div className="overflow-auto flex-1 mt-4">
+                  {csvLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : csvData ? (
+                    <table className="text-xs w-full border-collapse">
+                      <thead>
+                        <tr>
+                          {csvData[0]?.map((h, i) => (
+                            <th key={i} className="border border-border px-2 py-1 text-left font-medium bg-muted/50 sticky top-0">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {csvData.slice(1).map((row, ri) => (
+                          <tr key={ri}>
+                            {row.map((cell, ci) => (
+                              <td key={ci} className="border border-border px-2 py-1 max-w-[300px] truncate">{cell}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-8">No CSV data</p>
+                  )}
+                </div>
+                <SheetFooter className="mt-4">
+                  <a href={datasetCsvUrl} download>
+                    <Button variant="outline" size="sm" className="gap-1.5">
+                      <Download className="size-3.5" />
+                      Download CSV
+                    </Button>
+                  </a>
+                  {csvRegenerating && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <LoaderCircle className="size-3 animate-spin" /> Regenerating...
+                    </span>
+                  )}
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+          )}
+          <Badge
+            variant="outline"
+            className={`${cfg.badgeClass} whitespace-nowrap transition-colors duration-300 text-[10px] sm:text-xs`}
+          >
+            <span
+              className={`mr-1 inline-block size-1.5 rounded-full transition-colors duration-300 ${cfg.dot}${cfg.pulse ? " animate-pulse" : ""}`}
+            />
+            {cfg.label}
+          </Badge>
+        </div>
       </motion.div>
 
       {/* ── Body ───────────────────────────────────── */}
@@ -1078,63 +1134,6 @@ export default function ThemedCaptureDetail() {
                     </motion.div>
                   )}
 
-                  {/* CSV Sheet */}
-                  {datasetCsvUrl && (
-                    <motion.div variants={fadeUp}>
-                      <Sheet>
-                        <SheetTrigger render={<Button variant="outline" size="sm" className="gap-1.5" onClick={() => { if (!csvData) loadCsv(); }} />}>
-                          <Table2 className="size-3.5" />
-                          View CSV
-                        </SheetTrigger>
-                        <SheetContent side="right" style={{ maxWidth: "85vw" }}>
-                          <SheetHeader>
-                            <SheetTitle>Dataset CSV</SheetTitle>
-                          </SheetHeader>
-                          <div className="overflow-auto flex-1 mt-4">
-                            {csvLoading ? (
-                              <div className="flex items-center justify-center py-12">
-                                <LoaderCircle className="size-5 animate-spin text-muted-foreground" />
-                              </div>
-                            ) : csvData ? (
-                              <table className="text-xs w-full border-collapse">
-                                <thead>
-                                  <tr>
-                                    {csvData[0]?.map((h, i) => (
-                                      <th key={i} className="border border-border px-2 py-1 text-left font-medium bg-muted/50 sticky top-0">{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {csvData.slice(1).map((row, ri) => (
-                                    <tr key={ri}>
-                                      {row.map((cell, ci) => (
-                                        <td key={ci} className="border border-border px-2 py-1 max-w-[300px] truncate">{cell}</td>
-                                      ))}
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            ) : (
-                              <p className="text-sm text-muted-foreground text-center py-8">No CSV data</p>
-                            )}
-                          </div>
-                          <SheetFooter className="mt-4">
-                            <a href={datasetCsvUrl} download>
-                              <Button variant="outline" size="sm" className="gap-1.5">
-                                <Download className="size-3.5" />
-                                Download CSV
-                              </Button>
-                            </a>
-                            {csvRegenerating && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <LoaderCircle className="size-3 animate-spin" /> Regenerating...
-                              </span>
-                            )}
-                          </SheetFooter>
-                        </SheetContent>
-                      </Sheet>
-                    </motion.div>
-                  )}
                 </>
               )}
             </>
