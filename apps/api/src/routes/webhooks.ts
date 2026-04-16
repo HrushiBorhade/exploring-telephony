@@ -97,14 +97,15 @@ router.post("/livekit/webhook", async (req, res) => {
     }
 
     // ── participant_left ────────────
+    // When a caller hangs up during recording:
+    //   1. Stop all egresses (synchronized duration — all 3 stop together)
+    //   2. Remove the other caller (so they don't sit alone)
+    //   3. DO NOT change capture status — egress_ended webhooks handle completion
+    //   4. DO NOT delete room — room closes naturally, room_finished fires
     if (event.event === "participant_left" && event.room && event.participant) {
       const roomName = event.room.name;
       const identity = event.participant.identity;
 
-      // ── Capture room: caller left during recording → stop egress + cleanup
-      // Only handle "active" status — during "calling" (consent phase), SIP bridges
-      // can flicker (connection_aborted → participant_left → re-join). The agent
-      // handles consent timeouts internally. Don't abort prematurely.
       if ((identity === "caller_a" || identity === "caller_b") && roomName.startsWith("capture-")) {
         const capture = findCaptureByRoom(roomName);
         if (capture && capture.status === "active") {
@@ -112,8 +113,7 @@ router.post("/livekit/webhook", async (req, res) => {
           const remaining = capture._joinedCallers?.size ?? 0;
           logger.info(`[WEBHOOK] ${identity} left ${roomName}. Callers remaining: ${remaining}`);
 
-          // CRITICAL: Stop all egresses FIRST for synchronized recording duration
-          // This must happen before any participant removal or room deletion
+          // Stop all egresses for synchronized recording duration
           if (capture._egressIds?.length) {
             try {
               await Promise.all(
@@ -123,16 +123,33 @@ router.post("/livekit/webhook", async (req, res) => {
                 ),
               );
               logger.info(`[WEBHOOK] All egresses stopped for ${capture.id}`);
-
-              // Wait for LiveKit to finalize recordings (important!)
-              // RoomCompositeEgress needs time to flush buffered audio before room deletion
-              await new Promise((r) => setTimeout(r, 1000));
             } catch (err: any) {
               logger.error(`[WEBHOOK] Egress stop failed:`, err.message);
             }
           }
 
-          // Update capture status AFTER egress is stopped
+          // Remove the other caller so they don't sit in an empty room
+          if (remaining > 0) {
+            const otherCaller = identity === "caller_a" ? "caller_b" : "caller_a";
+            logger.info(`[WEBHOOK] Removing ${otherCaller} from ${roomName} (partner left)`);
+            roomService.removeParticipant(roomName, otherCaller)
+              .catch((e) => logger.warn(`[CLEANUP] removeParticipant ${otherCaller} failed:`, e.message));
+          }
+
+          logger.info(`[WEBHOOK] Egresses stopped for ${capture.id} — waiting for egress_ended webhooks to save recordings`);
+        }
+      }
+    }
+
+    // ── room_finished (fallback for failed calls only) ────────────
+    // If egress was started, egress_ended webhooks handle completion.
+    // Only mark as ended if NO egress was ever started (failed call).
+    if (event.event === "room_finished" && event.room) {
+      const roomName = event.room.name;
+      const capture = findCaptureByRoom(roomName);
+      if (capture && capture.status === "active") {
+        if (!capture._egressIds?.length) {
+          // No egress → failed call (consent denied, no answer, agent error)
           captureActiveGauge.dec();
           capture.status = "ended";
           capture.endedAt = new Date().toISOString();
@@ -141,39 +158,13 @@ router.post("/livekit/webhook", async (req, res) => {
             status: "ended",
             endedAt: new Date(capture.endedAt),
             durationSeconds: capture.durationSeconds,
-          }).catch((e) => logger.error({ captureId: capture.id }, "[DB] participant_left update failed:", e.message));
-          logger.info(`[WEBHOOK] Capture ${capture.id} ended (caller left)`);
-
-          // Remove the other caller after egress is stopped
-          if (remaining > 0) {
-            const otherCaller = identity === "caller_a" ? "caller_b" : "caller_a";
-            logger.info(`[WEBHOOK] Removing ${otherCaller} from ${roomName} (partner left)`);
-            roomService.removeParticipant(roomName, otherCaller)
-              .catch((e) => logger.warn(`[CLEANUP] removeParticipant ${otherCaller} failed:`, e.message));
-          }
-
-          // Finally, delete room (after egress stopped and finalized)
-          roomService.deleteRoom(roomName).catch((e) => logger.warn("[CLEANUP] deleteRoom failed:", e.message));
+          }).catch((e) => logger.error("[DB] room_finished update failed:", e.message));
+          dbq.releaseThemeSample(capture.id).catch(() => {});
+          logger.info(`[WEBHOOK] Capture ${capture.id} ended (room finished, no egress — failed call)`);
+        } else {
+          // Egress was started → egress_ended webhooks will save URLs and complete
+          logger.info(`[WEBHOOK] Room finished for ${capture.id} — egress active, deferring to egress_ended`);
         }
-      }
-    }
-
-    // ── room_finished (fallback) ────────────
-    if (event.event === "room_finished" && event.room) {
-      const roomName = event.room.name;
-      const capture = findCaptureByRoom(roomName);
-      if (capture && capture.status === "active") {
-        captureActiveGauge.dec();
-        capture.status = "ended";
-        capture.endedAt = new Date().toISOString();
-        capture.durationSeconds = calculateDuration(capture.startedAt);
-        await dbq.updateCapture(capture.id, {
-          status: "ended",
-          endedAt: new Date(capture.endedAt),
-          durationSeconds: capture.durationSeconds,
-        }).catch((e) => logger.error("[DB] room_finished update failed:", e.message));
-        dbq.releaseThemeSample(capture.id).catch(() => {});
-        logger.info(`[WEBHOOK] Capture ${capture.id} ended (room finished)`);
       }
     }
 
@@ -252,10 +243,35 @@ router.post("/livekit/webhook", async (req, res) => {
               { jobId: `process-${ready.id}` },
             );
 
-            await dbq.updateCapture(ready.id, { status: "processing" });
+            // Finalize capture — use endedAt/duration from earlier egress_ended if already set
+            const endedAt = ready.endedAt ? new Date(ready.endedAt) : new Date();
+            const durationSeconds = ready.durationSeconds ?? (ready.startedAt
+              ? Math.round((endedAt.getTime() - new Date(ready.startedAt).getTime()) / 1000)
+              : 0);
+
+            await dbq.updateCapture(ready.id, {
+              status: "processing",
+              endedAt,
+              durationSeconds,
+            });
+
+            // Decrement active gauge + update cache
+            const cached = activeCaptures.get(ready.id);
+            if (cached && cached.status === "active") {
+              captureActiveGauge.dec();
+              cached.status = "processing";
+              cached.endedAt = endedAt.toISOString();
+              cached.durationSeconds = durationSeconds;
+            }
 
             // Mark theme sample as completed
             await dbq.completeThemeSample(ready.id).catch(() => {});
+
+            // Delete room — safe now, all egresses finalized and URLs saved
+            const roomName = ready.roomName ?? (ready as any).room_name;
+            if (roomName) {
+              roomService.deleteRoom(roomName).catch(() => {});
+            }
 
             setTimeout(() => activeCaptures.delete(ready.id), 10_000);
           }
