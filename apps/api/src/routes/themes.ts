@@ -329,6 +329,11 @@ router.post("/api/captures/:id/form/validate", requireAuth, async (req: AuthRequ
     // Try LLM validation first, fall back to exact match
     const results = (await llmValidation(reference, values)) ?? exactMatchValidation(reference, values);
 
+    // Save submitted form values to DB (only form fields, not on_submit)
+    const submittedOnly: Record<string, string> = {};
+    for (const k of fieldsToCheck) submittedOnly[k] = String(values[k] ?? "").trim();
+    await dbq.updateCapture(id, { submittedFormValues: JSON.stringify(submittedOnly) }).catch(() => {});
+
     const score = results.filter((r) => r.correct).length;
     const total = results.length;
 
