@@ -324,48 +324,10 @@ export default defineAgent({
       return;
     }
 
-    // ── Phase 5: Signal egress start ──
-    log("Both consented — signaling egress");
-    const written = await setRoomMetadata(room.name!, {
-      announced: true,
-      consentA: true,
-      consentB: true,
-    });
-
-    if (!written) {
-      log("CRITICAL: metadata write failed");
-      await safeSay(session, "A system error occurred. This call will end.", {
-        audio: wavToAudioFrames(SYSTEM_ERROR_AUDIO),
-      });
-      ctx.shutdown();
-      return;
-    }
-
-    // ── Phase 6: Wait for egress initialization ──
-    // Poll for egress to start (the webhook/API starts egress when it sees announced:true).
-    // Max wait 5s — if egress hasn't started by then, play announcement anyway
-    // (better to capture most of the conversation than wait indefinitely).
-    log("Waiting for egress to initialize...");
-    const egressDeadline = Date.now() + 5000;
-    let egressConfirmed = false;
-    while (Date.now() < egressDeadline) {
-      try {
-        const rooms = await getRoomClient().listRooms([room.name!]);
-        const meta = rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {};
-        if (meta.egressStarted === true) {
-          egressConfirmed = true;
-          log("Egress confirmed started");
-          break;
-        }
-      } catch {}
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    if (!egressConfirmed) {
-      log("Egress not confirmed within 5s — proceeding with announcement anyway");
-    }
-
-    // ── Phase 7: Play announcement ──
-    log("Playing announcement");
+    // ── Phase 5: Play announcement BEFORE egress starts ──
+    // Announcement plays while egress is NOT yet recording, so it won't
+    // appear in the mixed egress. Callers hear it but it's not captured.
+    log("Both consented — playing announcement (pre-egress)");
     await safeSay(session, "Both parties have consented. Recording has begun.", {
       allowInterruptions: false,
       audio: wavToAudioFrames(ANNOUNCE_AUDIO),
@@ -377,6 +339,25 @@ export default defineAgent({
       setParticipantMuted(room.name!, "caller_b", false),
     ]);
     log("Both participants unmuted — conversation active");
+
+    // ── Phase 6: Signal egress start AFTER announcement ──
+    // Now that announcement is done and callers are unmuted, start recording.
+    // The API starts all 3 egresses when it sees announced:true.
+    log("Signaling egress start");
+    const written = await setRoomMetadata(room.name!, {
+      announced: true,
+      consentA: true,
+      consentB: true,
+    });
+
+    if (!written) {
+      log("CRITICAL: metadata write failed — egress won't start");
+      // Callers are already talking — this is a degraded state but not fatal.
+      // The conversation continues but won't be recorded.
+    }
+
+    // Brief wait for egress to initialize before agent leaves
+    await new Promise((r) => setTimeout(r, 1000));
 
     log("Done — callers stay connected, egress recording");
     ctx.shutdown();
