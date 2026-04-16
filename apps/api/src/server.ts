@@ -5,8 +5,13 @@ import { logger } from "./logger";
 import { env } from "./env";
 import * as dbq from "@repo/db";
 import { setupMiddleware } from "./middleware/setup";
-import { roomService } from "./lib/livekit";
+import { roomService, egressClient } from "./lib/livekit";
 import { globalErrorHandler } from "./middleware/error-handler";
+import { notifySlackError } from "@repo/shared";
+import { activeCaptures } from "./services/state";
+import { captureActiveGauge } from "./metrics";
+
+const MAX_CALL_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
 // Routes
 import captureRoutes from "./routes/captures";
@@ -89,6 +94,8 @@ async function start() {
     }
   }
 
+  let durationCheckInterval: ReturnType<typeof setInterval> | null = null;
+
   const server = app.listen(Number(PORT), async () => {
     logger.info({ port: PORT }, "Voice Capture Platform started");
 
@@ -126,10 +133,101 @@ async function start() {
     } catch (err: any) {
       logger.error("[STARTUP] Reconciliation failed:", err.message);
     }
+
+    // ── Max call duration enforcer ──
+    // Every 60s, check for active captures exceeding 30 minutes.
+    // Stops egresses, removes callers, marks capture as ended.
+    // Prevents runaway calls from bankrupting us.
+    durationCheckInterval = setInterval(async () => {
+      try {
+        const active = await dbq.findStaleCaptures(); // returns calling + active captures
+        for (const c of active) {
+          if (c.status !== "active" || !c.startedAt) continue;
+          const elapsed = Date.now() - new Date(c.startedAt).getTime();
+          if (elapsed < MAX_CALL_DURATION_MS) continue;
+
+          const mins = Math.round(elapsed / 60_000);
+          logger.warn({ captureId: c.id, elapsedMinutes: mins }, "[TIMEOUT] Capture exceeded max duration — auto-ending");
+
+          const roomName = c.roomName || `capture-${c.id}`;
+
+          // Stop all active egresses for this room (query LiveKit, don't rely on in-memory cache)
+          try {
+            const egresses = await egressClient.listEgress({ roomName });
+            for (const eg of egresses) {
+              if (eg.status === 0 || eg.status === 1) { // EGRESS_STARTING or EGRESS_ACTIVE
+                await egressClient.stopEgress(eg.egressId).catch(() => {});
+              }
+            }
+          } catch (e: any) {
+            logger.warn({ captureId: c.id, error: e.message }, "[TIMEOUT] Failed to stop egresses");
+          }
+
+          // Wait for egresses to finalize (poll until COMPLETE/FAILED, max 15s)
+          // Critical: recordings are lost if room is deleted before egress uploads to S3
+          const maxWait = 15_000;
+          const pollMs = 1000;
+          let waited = 0;
+          while (waited < maxWait) {
+            try {
+              const current = await egressClient.listEgress({ roomName });
+              const allDone = current.every(eg => eg.status === 3 || eg.status === 4); // COMPLETE or FAILED
+              if (allDone || current.length === 0) break;
+            } catch {}
+            await new Promise((r) => setTimeout(r, pollMs));
+            waited += pollMs;
+          }
+          if (waited >= maxWait) {
+            logger.warn({ captureId: c.id }, "[TIMEOUT] Egress finalization timed out after 15s — proceeding cautiously");
+          }
+
+          // Remove participants from room (hangs up their calls)
+          try {
+            const participants = await roomService.listParticipants(roomName);
+            for (const p of participants) {
+              await roomService.removeParticipant(roomName, p.identity).catch(() => {});
+            }
+          } catch {}
+
+          // Atomically update DB — only if still "active" (prevents double-processing during rolling deploys)
+          const duration = Math.round(elapsed / 1000);
+          const { endCaptureIfActive } = await import("@repo/db");
+          const updated = await endCaptureIfActive(c.id, new Date(), duration);
+          if (!updated) {
+            logger.info({ captureId: c.id }, "[TIMEOUT] Capture already ended by another task, skipping");
+            continue;
+          }
+
+          // Clean up in-memory state if present
+          const cached = activeCaptures.get(c.id);
+          if (cached) {
+            captureActiveGauge.dec();
+            cached.status = "ended";
+            cached.endedAt = new Date().toISOString();
+            cached.durationSeconds = duration;
+          }
+
+          // Delete room
+          await roomService.deleteRoom(roomName).catch(() => {});
+
+          // Alert
+          notifySlackError({
+            type: "call-timeout",
+            error: `Capture auto-ended after ${mins} minutes (max ${MAX_CALL_DURATION_MS / 60_000}min)`,
+            context: { captureId: c.id, elapsedMinutes: mins },
+          }).catch(() => {});
+
+          logger.info({ captureId: c.id }, "[TIMEOUT] Capture auto-ended");
+        }
+      } catch (err: any) {
+        logger.error({ error: err.message }, "[TIMEOUT] Duration check failed");
+      }
+    }, 60_000);
   });
 
   function shutdown(signal: string) {
     logger.info({ signal }, "Shutting down gracefully...");
+    if (durationCheckInterval) clearInterval(durationCheckInterval);
     server.close(async () => {
       logger.info("HTTP server closed");
       process.exit(0);

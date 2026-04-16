@@ -11,6 +11,14 @@ export async function updateCapture(id: string, fields: Partial<typeof schema.ca
   await db.update(schema.captures).set(fields).where(eq(schema.captures.id, id));
 }
 
+/** Atomically end a capture ONLY if it's still active. Returns true if updated, false if already ended. */
+export async function endCaptureIfActive(id: string, endedAt: Date, durationSeconds: number): Promise<boolean> {
+  const result = await db.update(schema.captures)
+    .set({ status: "ended", endedAt, durationSeconds })
+    .where(and(eq(schema.captures.id, id), eq(schema.captures.status, "active")));
+  return (result as any).rowCount > 0 || (result as any).count > 0;
+}
+
 export async function getCapture(id: string) {
   return db.query.captures.findFirst({ where: eq(schema.captures.id, id) });
 }
