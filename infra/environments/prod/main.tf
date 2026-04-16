@@ -718,6 +718,7 @@ module "ecs" {
             { name = "REDIS_PORT", value = "6379" },
             { name = "S3_BUCKET", value = module.s3_recordings.s3_bucket_id },
             { name = "S3_REGION", value = var.region },
+            { name = "FRONTEND_URL", value = "https://${var.frontend_domain}" },
           ]
 
           secrets = [
@@ -728,6 +729,7 @@ module "ecs" {
             { name = "S3_SECRET_KEY", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:S3_SECRET_KEY::" },
             { name = "SLACK_WEBHOOK_URL", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:SLACK_WEBHOOK_URL::" },
             { name = "SLACK_ALERTS_WEBHOOK_URL", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:SLACK_ALERTS_WEBHOOK_URL::" },
+            { name = "SLACK_CAPTURES_WEBHOOK_URL", valueFrom = "${aws_secretsmanager_secret.app_secrets.arn}:SLACK_CAPTURES_WEBHOOK_URL::" },
           ]
 
           readonlyRootFilesystem = false

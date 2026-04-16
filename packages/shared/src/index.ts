@@ -1,3 +1,3 @@
-export { notifySlack, notifySlackError, notifySlackNewUser } from "./slack";
+export { notifySlack, notifySlackError, notifySlackNewUser, notifySlackCaptureCompleted } from "./slack";
 export type { SlackPayload, SlackBlock } from "./slack";
 export { injectTraceContext, extractTraceContext } from "./tracing";

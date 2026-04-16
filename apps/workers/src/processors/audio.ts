@@ -11,7 +11,7 @@ import { uploadToS3, downloadFromS3, deleteS3Prefix } from "../lib/s3";
 import { generateDatasetCsv } from "../lib/csv";
 import { moderateTranscript } from "../lib/moderation";
 import { logger } from "../logger";
-import { extractTraceContext } from "@repo/shared";
+import { extractTraceContext, notifySlackCaptureCompleted } from "@repo/shared";
 
 export interface AudioJobData {
   captureId: string;
@@ -269,6 +269,30 @@ async function _processAudio(job: Job<AudioJobData>): Promise<void> {
 
     await job.updateProgress(100);
     log.info({ csvUrl, segmentsA: resultA.segments.length, segmentsB: resultB.segments.length }, "Pipeline complete");
+
+    // Notify Slack — capture ready for admin review
+    try {
+      const cap = await dbq.getCapture(captureId);
+      if (cap) {
+        const profile = cap.userId ? await dbq.getProfile(cap.userId) : null;
+        const theme = cap.themeSampleId ? await dbq.getThemeSampleByCaptureId(captureId) : null;
+        notifySlackCaptureCompleted({
+          captureId,
+          type: cap.themeSampleId ? "themed" : "general",
+          userName: profile?.name ?? "Unknown",
+          userPhone: cap.phoneA,
+          phoneA: cap.phoneA,
+          phoneB: cap.phoneB,
+          language: cap.language,
+          durationSeconds: Math.round(alignedDurMixed),
+          category: theme?.category,
+          segmentsA: resultA.segments.length,
+          segmentsB: resultB.segments.length,
+        }).catch((e) => log.warn({ error: e.message }, "Slack capture notification failed"));
+      }
+    } catch (e: any) {
+      log.warn({ error: e.message }, "Slack capture notification failed");
+    }
   } finally {
     await rm(tmpDir, { recursive: true }).catch((e) => log.debug({ error: e.message }, "Temp cleanup failed"));
   }

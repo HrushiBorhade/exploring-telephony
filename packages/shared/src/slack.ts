@@ -26,13 +26,16 @@ export interface SlackPayload {
  * Post a Block Kit payload to a Slack webhook.
  *
  * channel "alerts" → SLACK_ALERTS_WEBHOOK_URL (errors, failures, incidents)
+ * channel "captures" → SLACK_CAPTURES_WEBHOOK_URL (completed captures for admin review)
  * channel "default" → SLACK_WEBHOOK_URL (signups, informational)
  *
  * No-ops when the target webhook URL is missing (local dev).
  */
-export async function notifySlack(payload: SlackPayload, channel: "default" | "alerts" = "default"): Promise<void> {
+export async function notifySlack(payload: SlackPayload, channel: "default" | "alerts" | "captures" = "default"): Promise<void> {
   const webhookUrl = channel === "alerts"
     ? (process.env.SLACK_ALERTS_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL)
+    : channel === "captures"
+    ? (process.env.SLACK_CAPTURES_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL)
     : process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) return;
 
@@ -129,4 +132,62 @@ export async function notifySlackNewUser(newUser: {
       },
     ],
   });
+}
+
+/**
+ * Send a capture-completed notification to Slack for admin review.
+ * Includes capture type, user info, duration, language, and admin link.
+ */
+export async function notifySlackCaptureCompleted(opts: {
+  captureId: string;
+  type: "general" | "themed";
+  userName: string;
+  userPhone: string;
+  phoneA: string;
+  phoneB: string;
+  language: string;
+  durationSeconds: number;
+  category?: string;
+  segmentsA?: number;
+  segmentsB?: number;
+}): Promise<void> {
+  const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const dur = `${Math.floor(opts.durationSeconds / 60)}:${String(Math.round(opts.durationSeconds % 60)).padStart(2, "0")}`;
+  const frontendUrl = process.env.FRONTEND_URL || "https://asr.annoteapp.com";
+  const adminLink = `${frontendUrl}/dashboard/tasks/${opts.captureId}${opts.type === "themed" ? "/themed" : ""}`;
+
+  const fields: SlackBlock["fields"] = [
+    { type: "mrkdwn", text: `*Type:*\n${opts.type === "themed" ? `Themed (${opts.category ?? "—"})` : "General"}` },
+    { type: "mrkdwn", text: `*Language:*\n${opts.language}` },
+    { type: "mrkdwn", text: `*User:*\n${opts.userName}` },
+    { type: "mrkdwn", text: `*Phone:*\n${opts.userPhone}` },
+    { type: "mrkdwn", text: `*Phones:*\n${opts.phoneA} ↔ ${opts.phoneB}` },
+    { type: "mrkdwn", text: `*Duration:*\n${dur}` },
+  ];
+
+  if (opts.segmentsA != null || opts.segmentsB != null) {
+    fields.push({ type: "mrkdwn", text: `*Segments:*\nA: ${opts.segmentsA ?? 0}, B: ${opts.segmentsB ?? 0}` });
+  }
+
+  await notifySlack({
+    blocks: [
+      {
+        type: "header",
+        text: { type: "plain_text", text: "Capture Completed — Ready for Review", emoji: true },
+      },
+      { type: "section", fields },
+      {
+        type: "actions",
+        elements: [
+          { type: "button", text: { type: "plain_text", text: "Review Capture" }, url: adminLink },
+        ],
+      },
+      {
+        type: "context",
+        elements: [
+          { type: "mrkdwn", text: `${timestamp} IST | ID: ${opts.captureId}` },
+        ],
+      },
+    ],
+  }, "captures");
 }
