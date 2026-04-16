@@ -88,6 +88,7 @@ export const captures = pgTable("captures_v2", {
   transcriptA: text("transcript_a"),
   transcriptB: text("transcript_b"),
   datasetCsvUrl: text("dataset_csv_url"),
+  submittedFormValues: text("submitted_form_values"),
   verified: boolean("verified"),
   themeSampleId: integer("theme_sample_id"), // FK to theme_samples.id enforced in migration SQL (avoids circular ref with Drizzle)
   durationSeconds: integer("duration_seconds"),

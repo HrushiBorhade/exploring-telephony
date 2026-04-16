@@ -22,6 +22,7 @@ export interface Capture {
   transcriptA?: string | null;
   transcriptB?: string | null;
   datasetCsvUrl?: string | null;
+  submittedFormValues?: string | null;
   durationSeconds?: number;
   createdAt: string;
   startedAt?: string;
@@ -33,7 +34,7 @@ export interface Capture {
 
 export interface ThemeSample {
   id: number;
-  category: "alphanumeric" | "healthcare" | "short_utterances";
+  category: "alphanumeric" | "healthcare" | "short_utterances" | "customer_support";
   language: "hindi" | "telugu";
   data: string;
   status: "available" | "assigned" | "completed";
