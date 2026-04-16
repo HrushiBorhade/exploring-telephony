@@ -52,6 +52,7 @@ export interface Capture {
   transcriptA?: string | null;
   transcriptB?: string | null;
   datasetCsvUrl?: string | null;
+  submittedFormValues?: string | null;
   durationSeconds?: number;
   createdAt: string;
   startedAt?: string;

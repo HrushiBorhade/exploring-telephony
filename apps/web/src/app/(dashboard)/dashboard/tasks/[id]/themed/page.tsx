@@ -239,11 +239,21 @@ export default function ThemedCaptureDetail() {
 
   // Populate form values from theme data when viewing a completed capture
   useEffect(() => {
-    if (theme?.data && isPostCall && !formInitialized) {
-      setFormValues(theme.data);
+    if (isPostCall && !formInitialized) {
+      // Prefer submitted values (what user actually typed) over reference values
+      if (capture?.submittedFormValues) {
+        try {
+          const submitted = JSON.parse(capture.submittedFormValues) as Record<string, string>;
+          setFormValues(submitted);
+        } catch {
+          if (theme?.data) setFormValues(theme.data);
+        }
+      } else if (theme?.data) {
+        setFormValues(theme.data);
+      }
       setFormInitialized(true);
     }
-  }, [theme?.data, isPostCall, formInitialized]);
+  }, [capture?.submittedFormValues, theme?.data, isPostCall, formInitialized]);
 
   // ── CSV loading ──
   const loadCsv = useCallback(async () => {
