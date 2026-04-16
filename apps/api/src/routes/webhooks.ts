@@ -279,7 +279,7 @@ router.post("/livekit/webhook", async (req, res) => {
       }
     }
   } catch (err: any) {
-    logger.error("[WEBHOOK] Error:", err.message);
+    logger.error({ err: err?.message, stack: err?.stack, code: err?.code }, "[WEBHOOK] Error processing event");
   } finally {
     webhookDurationHistogram.observe({ event: "webhook" }, Date.now() - webhookStart);
   }
