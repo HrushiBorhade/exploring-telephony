@@ -178,7 +178,10 @@ export async function setRecordingUrlAndCheckReady(
     extraSetParts.push(sql`, duration_seconds = ${extraFields.durationSeconds}`);
   }
   if (extraFields?.endedAt !== undefined) {
-    extraSetParts.push(sql`, ended_at = ${extraFields.endedAt}`);
+    const endedAtStr = extraFields.endedAt instanceof Date
+      ? extraFields.endedAt.toISOString()
+      : extraFields.endedAt;
+    extraSetParts.push(sql`, ended_at = ${endedAtStr}`);
   }
 
   const extraSql = extraSetParts.length > 0
