@@ -189,6 +189,98 @@ router.get("/api/captures/:id/theme", requireAuth, async (req: AuthRequest, res)
   }
 });
 
+// ── Rate limiter for form validation (per capture, in-memory) ──
+const validationAttempts = new Map<string, number>();
+const MAX_VALIDATION_ATTEMPTS = 10;
+
+/**
+ * Exact string match fallback — used when Gemini is unavailable or fails.
+ */
+function exactMatchValidation(
+  reference: Record<string, string>,
+  values: Record<string, string>,
+): { field: string; submitted: string; correct: boolean }[] {
+  const normalize = (s: string) =>
+    s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+  return Object.keys(reference)
+    .filter((k) => k !== "on_submit")
+    .map((key) => ({
+      field: key,
+      submitted: values[key] ?? "",
+      correct: normalize(values[key] ?? "") === normalize(reference[key]),
+    }));
+}
+
+/**
+ * LLM-powered semantic validation using Gemini Flash.
+ * Accepts transliterations, numeric equivalents, minor spelling variations.
+ */
+async function llmValidation(
+  reference: Record<string, string>,
+  values: Record<string, string>,
+): Promise<{ field: string; submitted: string; correct: boolean }[] | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const { GoogleGenAI } = await import("@google/genai");
+    const genai = new GoogleGenAI({ apiKey });
+
+    const fieldsToValidate = Object.keys(reference).filter((k) => k !== "on_submit");
+    const refObj: Record<string, string> = {};
+    const subObj: Record<string, string> = {};
+    for (const k of fieldsToValidate) {
+      refObj[k] = reference[k];
+      subObj[k] = values[k] ?? "";
+    }
+
+    const prompt = `You are validating a voice data collection form. Participant A listened to Participant B read reference values aloud, then typed what they heard.
+
+Accept as correct if:
+- Transliteration matches (प्रिया = Priya = priya)
+- Numeric equivalents (चार सौ अस्सी = 480 = char sau assi)
+- Minor spelling variations (Rahul = raahul)
+- Partial but clearly correct (just first name when full name expected)
+- Same meaning in different script (Devanagari vs Roman)
+
+Mark as INCORRECT only if the meaning is clearly wrong, completely different, or empty.
+
+Reference values: ${JSON.stringify(refObj)}
+Submitted values: ${JSON.stringify(subObj)}
+
+Return ONLY valid JSON array: [{"field":"field_name","correct":true},...]
+Return one entry per field. No extra text.`;
+
+    const response = await Promise.race([
+      genai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: prompt,
+        config: { responseMimeType: "application/json" },
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+    ]);
+
+    const text = response.text?.trim();
+    if (!text) return null;
+
+    const parsed = JSON.parse(text) as { field: string; correct: boolean }[];
+    if (!Array.isArray(parsed)) return null;
+
+    // Map LLM results back to the expected format
+    return fieldsToValidate.map((key) => {
+      const llmResult = parsed.find((r) => r.field === key);
+      return {
+        field: key,
+        submitted: values[key] ?? "",
+        correct: llmResult?.correct ?? false,
+      };
+    });
+  } catch (err: any) {
+    logger.warn({ error: err.message }, "[VALIDATE] LLM validation failed, falling back to exact match");
+    return null;
+  }
+}
+
 // Validate form answers against theme sample reference data
 router.post("/api/captures/:id/form/validate", requireAuth, async (req: AuthRequest, res) => {
   const id = req.params.id as string;
@@ -197,6 +289,13 @@ router.post("/api/captures/:id/form/validate", requireAuth, async (req: AuthRequ
     if (!capture) { res.status(404).json({ error: "Not found" }); return; }
     if (capture.userId !== req.userId && req.userRole !== "admin") {
       res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    // Rate limit
+    const attempts = validationAttempts.get(id) ?? 0;
+    if (attempts >= MAX_VALIDATION_ATTEMPTS) {
+      res.status(429).json({ error: "Maximum validation attempts reached" });
+      return;
     }
 
     const { values } = req.body;
@@ -212,15 +311,23 @@ router.post("/api/captures/:id/form/validate", requireAuth, async (req: AuthRequ
     }
 
     const reference = JSON.parse(sample.data) as Record<string, string>;
-    const normalize = (s: string) =>
-      s.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+    const fieldsToCheck = Object.keys(reference).filter((k) => k !== "on_submit");
 
-    const results: { field: string; submitted: string; correct: boolean }[] = [];
-    for (const key of Object.keys(reference)) {
-      const submitted = values[key] ?? "";
-      const correct = normalize(submitted) === normalize(reference[key]);
-      results.push({ field: key, submitted, correct });
+    // Pre-validation: all fields must be non-empty and min 2 chars
+    const emptyFields = fieldsToCheck.filter((k) => !values[k] || String(values[k]).trim().length < 2);
+    if (emptyFields.length > 0) {
+      res.status(400).json({
+        error: "All fields must be filled (min 2 characters)",
+        emptyFields,
+      });
+      return;
     }
+
+    // Increment attempt counter
+    validationAttempts.set(id, attempts + 1);
+
+    // Try LLM validation first, fall back to exact match
+    const results = (await llmValidation(reference, values)) ?? exactMatchValidation(reference, values);
 
     const score = results.filter((r) => r.correct).length;
     const total = results.length;

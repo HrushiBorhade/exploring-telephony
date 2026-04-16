@@ -32,6 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   alphanumeric: "Alphanumeric",
   healthcare: "Healthcare",
   short_utterances: "Short Utterances",
+  customer_support: "Customer Support",
   banking: "Banking",
   ecommerce: "E-Commerce",
   travel: "Travel",
@@ -150,7 +151,7 @@ export default function PublicThemePage() {
   const categoryLabel =
     CATEGORY_LABELS[data.category] ?? formatFieldLabel(data.category);
   const languageLabel = LANG_LABELS[data.language] ?? data.language;
-  const fieldEntries = Object.entries(data.data);
+  const fieldEntries = Object.entries(data.data).filter(([key]) => key !== "on_submit");
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-3 sm:px-4 py-6 sm:py-8">

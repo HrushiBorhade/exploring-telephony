@@ -222,7 +222,8 @@ export default function ThemedCaptureDetail() {
   const isCallActive = isCalling || isRecording;
   const isPostCall = !callFailed && ["ended", "processing", "completed"].includes(status);
   const canStartCall = sharedConfirm && understoodConfirm && (isPreCall || callFailed);
-  const formFields = theme ? Object.keys(theme.data) : [];
+  const formFields = theme ? Object.keys(theme.data).filter((k) => k !== "on_submit") : [];
+  const onSubmitScript = theme?.data?.on_submit ?? null;
   const publicUrl = theme?.publicToken
     ? `${typeof window !== "undefined" ? window.location.origin : ""}/t/${theme.publicToken}`
     : null;
@@ -344,11 +345,29 @@ export default function ThemedCaptureDetail() {
     setFormValues((prev) => ({ ...prev, [field]: value }));
   }
 
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
   function handleValidate() {
     if (attemptsUsed >= MAX_ATTEMPTS) {
       toast.error("Maximum attempts reached");
       return;
     }
+
+    // Client-side pre-validation: check all fields are filled
+    const errors: Record<string, string> = {};
+    for (const field of formFields) {
+      const val = formValues[field]?.trim() ?? "";
+      if (val.length < 2) {
+        errors[field] = val.length === 0 ? "This field is required" : "Must be at least 2 characters";
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      toast.error("Please fill all fields before validating");
+      return;
+    }
+    setFieldErrors({});
+
     validateMutation.mutate(formValues, {
       onSuccess: (data) => {
         setValidationResult(data);
@@ -759,16 +778,20 @@ export default function ThemedCaptureDetail() {
                               </div>
                               <Input
                                 value={formValues[field] ?? ""}
-                                onChange={(e) =>
-                                  handleFieldChange(field, e.target.value)
-                                }
+                                onChange={(e) => {
+                                  handleFieldChange(field, e.target.value);
+                                  if (fieldErrors[field]) setFieldErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+                                }}
                                 placeholder={`Enter ${field}`}
-                                className={borderClass}
+                                className={`${borderClass} ${fieldErrors[field] ? "border-red-500" : ""}`}
                                 disabled={
                                   validationResult?.allCorrect ||
                                   attemptsUsed >= MAX_ATTEMPTS
                                 }
                               />
+                              {fieldErrors[field] && (
+                                <p className="text-[11px] text-red-500">{fieldErrors[field]}</p>
+                              )}
                             </div>
                           );
                         })}
@@ -787,6 +810,18 @@ export default function ThemedCaptureDetail() {
                       <p className="text-sm text-emerald-700 dark:text-emerald-400">
                         All values correct! Great job.
                       </p>
+                    )}
+
+                    {/* on_submit script — shown after validation passes, for participant A to read aloud */}
+                    {validationResult?.allCorrect && onSubmitScript && (
+                      <div className="rounded-lg border-2 border-amber-500/50 bg-amber-50/50 dark:bg-amber-950/30 p-4 space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                          Read this aloud to the caller
+                        </p>
+                        <p className="text-sm font-medium leading-relaxed">
+                          {onSubmitScript}
+                        </p>
+                      </div>
                     )}
 
                     {/* Validate button */}
@@ -920,6 +955,8 @@ export default function ThemedCaptureDetail() {
                               : "border-red-500/50"
                             : "";
 
+                          const expectedValue = theme?.data?.[field] ?? "";
+
                           return (
                             <div key={field} className="grid gap-1.5">
                               <div className="flex items-center gap-1.5">
@@ -938,6 +975,9 @@ export default function ThemedCaptureDetail() {
                                 readOnly
                                 className={`bg-muted/30 ${borderClass}`}
                               />
+                              <p className="text-[11px] text-muted-foreground">
+                                Expected: <span className="font-medium text-foreground/70">{expectedValue}</span>
+                              </p>
                             </div>
                           );
                         })}
