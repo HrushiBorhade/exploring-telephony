@@ -29,6 +29,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth-client";
 import { useProfile } from "@/lib/api";
+import { SidebarWelcomeBanner } from "@/components/sidebar-welcome-banner";
+import { WelcomeModal } from "@/components/welcome-modal";
 
 const navMain = [
   {
@@ -78,6 +80,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: session } = useSession();
   const { data: profileData } = useProfile();
   const router = useRouter();
+  const [welcomeOpen, setWelcomeOpen] = React.useState(false);
 
   const isAdmin = (session?.user as any)?.role === "admin";
   const phoneNumber = String((session?.user as Record<string, unknown>)?.phoneNumber ?? "");
@@ -148,8 +151,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           animate="center"
           variants={staggerChild}
         >
+          <SidebarWelcomeBanner onClick={() => setWelcomeOpen(true)} />
           <NavUser user={user} />
         </motion.div>
+        <WelcomeModal
+          open={welcomeOpen}
+          onOpenChange={setWelcomeOpen}
+          userName={profileName || undefined}
+        />
       </SidebarFooter>
     </Sidebar>
   );
